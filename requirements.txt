@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+cobra
+llama-index==0.12.39
+llama-index-llms-ollama
+ollama==0.4.8
+pydantic
+requests
+accelerate
+python-libsbml
+streamlit
+torch
+tqdm
+python-multipart
