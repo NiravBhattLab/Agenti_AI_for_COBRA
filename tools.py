@@ -2,6 +2,9 @@ from llama_index.core.tools import FunctionTool
 from cobra.flux_analysis import flux_variability_analysis
 from cobra.flux_analysis import single_gene_deletion, double_gene_deletion, single_reaction_deletion, double_reaction_deletion
 from models import ModelManager
+from cobra.sampling import OptGPSampler, ACHRSampler
+import multiprocessing
+import psutil
 from ptypes import LoadModelInput
 import pandas as pd
 import os
@@ -21,8 +24,6 @@ def get_current_model_id() -> str:
         return {"error": "No model is currently loaded. Please load a model first."}
     
     return {"model_id": model_manager.current_model_id}
-
-
 def check_model_loaded():
     """
     Checks if a model is currently loaded in the ModelManager.
@@ -31,8 +32,6 @@ def check_model_loaded():
     if not model_manager or not model_manager.current_model_id:
         return {"error" : "No model is currently loaded. Please load a model first."}
     return {"response": "Model is loaded", "model_id": model_manager.current_model_id}
-
-
 def load_model(model_id: str) -> str:
     """
     Loads a model by its ID from the ModelManager.
@@ -43,8 +42,6 @@ def load_model(model_id: str) -> str:
         return {"response": f"Model {model_id} loaded successfully.", "model_id": model_id}
     except Exception as e:
         return {"error" : str(e)}
-
-
 def model_data() -> dict:
     """
     Returns metadata for a given a model.
@@ -76,8 +73,6 @@ def model_data() -> dict:
             "error": str(e),
             "model_id": model_manager.current_model_id
         }
-    
-
 def model_info(query: str, count=10) -> dict:
     """
     Returns specific information for a given model based on a query.
@@ -104,8 +99,6 @@ def model_info(query: str, count=10) -> dict:
             "error": str(e),
             "model_id": model_manager.current_model_id
         }
-
-
 def reaction_info(rxn_name: str) -> dict:
     """
     Returns information about a specific reaction in the model.
@@ -127,8 +120,6 @@ def reaction_info(rxn_name: str) -> dict:
         }
     except Exception as e:
         return {"error": str(e)}
-
-
 def metabolite_info(mb_id: str) -> dict:
     """
     Returns information about a specific metabolite in the model.
@@ -146,8 +137,6 @@ def metabolite_info(mb_id: str) -> dict:
         }
     except Exception as e:
         return {"error": str(e)}
-
-
 def gene_info(gn_id: str) -> dict:
     """
     Returns information about a specific reaction in the model.
@@ -164,7 +153,6 @@ def gene_info(gn_id: str) -> dict:
         }
     except Exception as e:
         return {"error": str(e)}
-
 def run_fba() -> str:
     """
     Performs Flux Balance Analysis (FBA) on the current metabolic model.
@@ -190,8 +178,6 @@ def run_fba() -> str:
         "Objective value" : str(solution.objective_value),
         "status" : str(solution.status),
     }
-
-
 def set_model_objective(objective_dict, direction="max"):
     """
     Sets the objective on the current model.
@@ -216,9 +202,7 @@ def set_model_objective(objective_dict, direction="max"):
         }
 
     except Exception as e:
-        return {"error" : str(e)}
-
-    
+        return {"error" : str(e)}  
 def run_fva(rxn_names, fraction_of_optimum=0.9):
     """
     Runs Flux Variability Analysis (FVA) on the model given a Reaction List and a Fraction of Optimum (FO) Value.    
@@ -246,7 +230,7 @@ def run_fva(rxn_names, fraction_of_optimum=0.9):
         fva_df.columns = ["Reaction Name", "Reaction ID", "Maximum Flux", "Minimum Flux"]
 
         if len(fva_df) > 5:
-            output_dir = os.path.join(os.getcwd(), 'outputs')
+            output_dir = os.path.join(os.getcwd(), 'outputs/fva')
             os.makedirs(output_dir, exist_ok=True)
             csv_path = os.path.join(output_dir, f"fva_result.csv")
             fva_df.to_csv(csv_path, index=False)
@@ -264,8 +248,6 @@ def run_fva(rxn_names, fraction_of_optimum=0.9):
 
     except Exception as e:
         return {"error": str(e)}
-
-
 def gene_knockout_simulation(gene_names: list[str], type: str = "single") -> dict:
     """
     Performs single or double gene knockout simulations on the loaded metabolic model.
@@ -274,7 +256,7 @@ def gene_knockout_simulation(gene_names: list[str], type: str = "single") -> dic
         model = model_manager.get_current_model()
         valid_genes = []
         seen = set()
-        for gene in model.reactions:
+        for gene in model.genes:
             if gene.name in gene_names and gene.id not in seen:
                 valid_genes.append(gene)
                 seen.add(gene.id)
@@ -296,16 +278,15 @@ def gene_knockout_simulation(gene_names: list[str], type: str = "single") -> dic
         })
 
         if len(result) > 5:
-            file_path = "/tmp/gene_knockout_result.csv"
+            file_path = os.path.join(os.getcwd(), "outputs/knockouts/gene_knockout_result.csv")
             result.to_csv(file_path, index=False)
-            return {"file": file_path, "note": "Too many results to display. Download CSV."}
+            subset = result.iloc[:5, :5]
+            return {"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."}
 
-        return result.iloc[:5].to_dict(orient="records")
+        return result.to_dict(orient="records")
 
     except Exception as e:
         return {"error": str(e)}
-    
-
 def reaction_knockout_simulation(reaction_names: list[str], type: str = "single") -> dict:
     """
     Performs single or double reaction knockout simulations on the loaded metabolic model.
@@ -336,15 +317,71 @@ def reaction_knockout_simulation(reaction_names: list[str], type: str = "single"
         })
 
         if len(result) > 5:
-            file_path = "/tmp/reaction_knockout_result.csv"
+            file_path = os.path.join(os.getcwd(), "outputs/knockouts/reaction_knockout_result.csv")
             result.to_csv(file_path, index=False)
-            return {"file": file_path, "note": "Too many results to display. Download CSV."}
+            subset = result.iloc[:5, :5]
+            return {"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."}
 
-        return result.iloc[:5].to_dict(orient="records")
+        return result.to_dict(orient="records")
 
     except Exception as e:
         return {"error": str(e)}
-    
+def recommend_sampling_config(model):
+    n_rxns = len(model.reactions)
+    cpu_cores = multiprocessing.cpu_count()
+    ram_gb = psutil.virtual_memory().total / 1e9
+
+    if n_rxns < 500:
+        method = "achr"
+    elif cpu_cores >= 4:
+        method = "optgp"
+    else:
+        method = "achr"
+        
+    thinning = max(10, int(n_rxns / 5))
+    thinning = min(thinning, 500)  # cap for efficiency
+
+    processes = None
+    if method == "optgp":
+        if cpu_cores >= 8:
+            processes = cpu_cores // 2
+        elif cpu_cores >= 4:
+            processes = 2
+        else:
+            processes = 1
+        if ram_gb < 4:
+            processes = min(processes, 2)
+
+    return {
+        "method": method,
+        "thinning": thinning,
+        "processes": processes
+    }
+def sample_metabolic_model(reaction_count=1000):
+    """
+    Samples a metabolic model given the number of samples.
+    """
+    model = model_manager.get_current_model()
+    # error handling
+    config = recommend_sampling_config(model)
+    if config["method"] == "achr":
+        sampler = ACHRSampler(model, thinning=config["thinning"])
+    else:
+        sampler = OptGPSampler(model, thinning=config["thinning"], processes=config["processes"])
+    samples = sampler.sample(reaction_count)
+    subset = samples.iloc[:5, :5]
+    output_dir = os.path.join(os.getcwd(), 'outputs/flux_sampling', 'flux_sampling_result.csv')
+    samples.to_csv(output_dir, index=False)
+    return {
+        "status": "success",
+        "n_samples": reaction_count,
+        "method": config["method"],
+        "thinning": config["thinning"],
+        "processes": config["processes"],
+        "save_path": output_dir,
+        "samples": subset.to_dict(orient="records")
+    }
+
 
 ######### TOOL SETUP
 
@@ -354,14 +391,12 @@ check_load_model_tool = FunctionTool.from_defaults(
     description="Checks if a model is currently loaded in the ModelManager. Returns the model ID if loaded, otherwise an error message.",
     return_direct=return_direct
 )
-
 current_model_tool = FunctionTool.from_defaults(
     fn=get_current_model_id,
     name="get_cuurrent_model_id",
     description="""Returns the current model ID from the ModelManager.""",
     return_direct=return_direct
 )
-
 load_model_tool = FunctionTool.from_defaults(
     fn=load_model,
     name="load_model",
@@ -369,14 +404,12 @@ load_model_tool = FunctionTool.from_defaults(
     fn_schema=LoadModelInput,
     return_direct=return_direct
 )
-
 model_data_tool = FunctionTool.from_defaults(
     fn=model_data,
     name="model_data",
     description="Returns the metadata related to a given model: model_id, model_name, reactions_count, metabolites_count, genes_count",
     return_direct=return_direct
 )
-
 model_info_tool = FunctionTool.from_defaults(
     fn=model_info,
     name="model_info",
@@ -385,28 +418,24 @@ model_info_tool = FunctionTool.from_defaults(
     You can also specify the number of items to return with the 'count' parameter.""",
     return_direct=return_direct
 )
-
 reaction_info_tool = FunctionTool.from_defaults(
     fn=reaction_info,
     name="reaction_info",
     description="Returns the metadata related to a given Reaction by Name: reaction_id, name, Stochiometry, GPR, lower_bound, upper_bound",
     return_direct=return_direct
 )
-
 metabolite_info_tool = FunctionTool.from_defaults(
     fn=metabolite_info,
     name="metabolite_info",
     description="Returns the metadata related to a given Metabolite by Name: metabolite_id, name, Formula, Compartment, Total Reactions, Reactions",
     return_direct=return_direct
 )
-
 gene_info_tool = FunctionTool.from_defaults(
     fn=gene_info,
     name="gene_info",
     description="Returns the metadata related to a given Gene by Name: gene_id, name, Total Reactions, Reactions",
     return_direct=return_direct
 )
-
 # Change the description
 run_fba_tool = FunctionTool.from_defaults(
     fn=run_fba,
@@ -414,35 +443,36 @@ run_fba_tool = FunctionTool.from_defaults(
     description="Uses a bounds dictionary loaded using `set_reaction_bounds_for_FBA()` for Flux Balance Analysis (FBA).",
     return_direct=return_direct
 )
-
 set_objective_tool = FunctionTool.from_defaults(
     fn=set_model_objective,
     name="set_model_objective_value",
     description="Sets the objective for the current metabolic model given a dictonary of Reaction_id: coefficient pairs and an optional direction value.",
     return_direct=return_direct
 )
-
 run_fva_tool = FunctionTool.from_defaults(
     fn=run_fva,
     name="run_flux_variability_analysis",
     description="Runs Flux Variability Analysis (FVA) on the model given a Reaction List and a Fraction of Optimum (FO) Value",
     return_direct=return_direct
 )
-
 gene_knockout_tool = FunctionTool.from_defaults(
     fn=gene_knockout_simulation,
     name="gene_knockout_simulation",
     description="Performs single or double gene knockout simulations on the loaded metabolic model",
     return_direct=return_direct
 )
-
 reaction_knockout_tool = FunctionTool.from_defaults(
     fn=reaction_knockout_simulation,
     name="reaction_knockout_simulation",
     description="Performs single or double reaction knockout simulations on the loaded metabolic model",
     return_direct=return_direct
 )
-
+flux_sampler_tool = FunctionTool.from_defaults(
+    fn=sample_metabolic_model,
+    name="sample_metabolic_model",
+    description="Flux Sampling / Flux Sample Analysis a metabolic model given the number of samples.",
+    return_direct=return_direct
+)
 
 
 
@@ -456,24 +486,3 @@ reaction_knockout_tool = FunctionTool.from_defaults(
 # file_path = r"E:\INTERNSHIP\IITM\metabolic\uploads\bounds_data\e_coli_bounds.csv"
 # model_manager.bounds_dict = pd.read_csv(file_path).values.tolist()
 # print(run_fba())
-
-################## MISC
-
-# def bounds_data_for_FBA(csv_file_path: str) -> dict:
-#     """
-#     Reads bounds data from a CSV file and returns it as a dictionary.
-#     This function simulates fetching bounds data from a file.
-#     """
-#     try:
-#         df = pd.read_csv(csv_file_path)
-#         bounds_data = df.to_dict(orient='records')
-#         model_manager.set_bounds_dict(bounds_data)
-#         return bounds_data
-#     except Exception as e:
-#         return {"error": str(e)}
-
-# set_bounds_tool = FunctionTool.from_defaults(
-#     fn=bounds_data_for_FBA,
-#     name="set_reaction_bounds_for_FBA",
-#     description="Reads bounds data from a CSV file and returns it as a dictionary for Flux Balance Analysis (FBA)."
-# )

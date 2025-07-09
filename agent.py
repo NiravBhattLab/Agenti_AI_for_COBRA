@@ -3,7 +3,7 @@ from llama_index.core.tools import ToolMetadata
 from tools import load_model_tool, model_data_tool, model_info_tool, current_model_tool, check_load_model_tool
 from tools import reaction_info_tool, metabolite_info_tool, gene_info_tool
 from tools import run_fba_tool, set_objective_tool, run_fva_tool
-from tools import gene_knockout_tool, reaction_knockout_tool 
+from tools import gene_knockout_tool, reaction_knockout_tool, flux_sampler_tool
 from llama_index.llms.ollama import Ollama
 from llama_index.core.llms import ChatMessage
 from prompts import system_prompt, agent_context, llm_system_prompt, llm_prompt
@@ -19,7 +19,7 @@ all_tools = [
     load_model_tool, model_data_tool, model_info_tool, # current_model_tool, check_load_model_tool,
     reaction_info_tool, metabolite_info_tool, gene_info_tool,
     run_fba_tool, set_objective_tool, run_fva_tool,
-    gene_knockout_tool, reaction_knockout_tool
+    gene_knockout_tool, reaction_knockout_tool, flux_sampler_tool
 ]
 
 agent = ReActAgent.from_tools(

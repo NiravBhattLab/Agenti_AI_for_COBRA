@@ -12,6 +12,10 @@ import os
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+os.makedirs("outputs", exist_ok=True)
+os.makedirs("/outputs/flux_sampling/", exist_ok=True)
+os.makedirs("/outputs/knockouts/", exist_ok=True)
+os.makedirs("/outputs/fva/", exist_ok=True)
 model_manager = ModelManager()
 set_model_manager(model_manager)
 

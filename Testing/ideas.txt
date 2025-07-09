@@ -1,0 +1,46 @@
+bt19d200@10.24.6.68
+psswd: pavan@phd
+
+
+General Idea:
+constaint based
+Sources: BioModels, Bigg, Vmh, Modelseed, 
+Models: user should be able to change
+
+APIs for the models
+Beginner people working -> Searching for a model form a db
+Uploading models
+Simple queries -> no. of reactions etc
+Reaction ids like EC number.
+
+
+30.5.25
+APIs: Bigg, Bio integration
+Model Metadata & Info
+Backend Server + Agent setup
+Upload SBML formats
+Query Models: Reactions, genes
+Steps: 
+FBA -> Objective of model (usually a rxn or linear combination of rxns or rxn expression), check internal objective -> Max (Default) / Min, Prompt user for objective: Objective coefficient, 
+
+
+2.07.25:
+front end
+FBA completion
+Modify the reaction co-efficients
+
+9.6.25
+EC number
+Model objective setting
+Csv filepath for bounds
+
+18.6.25
+Summary of RXN/MB/GN
+Include running the server and front end through main.py
+
+25.6.25
+Give a disclaimer. (We assume that there is some basic knowledge about CBBMs)
+Online sbml validator - https://sbml.bioquant.uni-heidelberg.de/validator_servlet/
+Follow up Questions.
+If naive name is given then Search and suggest correct reactions.
+More colloquial queries.
