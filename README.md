@@ -36,7 +36,7 @@ $ git clone https://github.com/your-org/Agenti_AI_for_COBRA.git
 $ cd Agenti_AI_for_COBRA
 
 # Create virtual environment
-$ python -m venv venv && source venv/bin/activate
+$ python -m venv venv && ./venv/bin/activate.ps1
 
 # Install dependencies
 $ pip install -r requirements.txt
