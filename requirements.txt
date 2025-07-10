@@ -2,7 +2,7 @@ fastapi
 uvicorn
 cobra
 llama-index==0.12.39
-llama-index-llms-ollama
+llama-index-llms-ollama==0.5.4
 ollama==0.4.8
 pydantic
 requests

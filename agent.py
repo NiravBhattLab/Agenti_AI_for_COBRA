@@ -30,7 +30,6 @@ agent = ReActAgent.from_tools(
     verbose=True
 )
 
-
 def setup_agent(new_llm):
     global agent, llm
     llm = new_llm
@@ -41,8 +40,6 @@ def setup_agent(new_llm):
         context=agent_context,
         verbose=True
     )
-
-
 
 def agent_query(user_input: str):
     agent_response = agent.query(user_input)

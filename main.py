@@ -105,14 +105,6 @@ async def get_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
     
-# @app.post("/set_llm/")
-# def set_llm(config: LLMConfig):
-#     global agent, llm, current_llm_config
-#     llm = get_llm(config.provider, config.model, config.api_key)
-#     current_llm_config.update(config.dict())
-#     setup_agent(llm)
-#     return {"status": "LLM updated", "provider": config.provider, "model": config.model}
-
 @app.post("/set_llm/")
 def set_llm(config: LLMConfig):
     global agent, llm, current_llm_config
@@ -123,7 +115,6 @@ def set_llm(config: LLMConfig):
         return {"status": "LLM updated", "provider": config.provider, "model": config.model}
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Failed to set LLM: {str(e)}"})
-
 
 
 @app.post("/chat/")
@@ -140,3 +131,11 @@ async def chat(req: ChatRequest):
 #     message = "Set the objective of the model to {ATPM: 1.0, EX_o2_e: 2.0} with direction as min"
 #     resp = agent_query(message)
 #     print(resp)
+
+# @app.post("/set_llm/")
+# def set_llm(config: LLMConfig):
+#     global agent, llm, current_llm_config
+#     llm = get_llm(config.provider, config.model, config.api_key)
+#     current_llm_config.update(config.dict())
+#     setup_agent(llm)
+#     return {"status": "LLM updated", "provider": config.provider, "model": config.model}
