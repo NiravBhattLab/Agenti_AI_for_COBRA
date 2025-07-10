@@ -46,8 +46,8 @@ $ python -m venv venv && source venv/bin/activate
 $ pip install -r requirements.txt
 ```
 2. **Get API KEY or use Ollama**: Supported services include OpenAI, Groq, HuggingFace or use Ollama.
-3. **Start the FastAPI server**: `uvicorn main:app --reload`
-4. **Start the Streamlit frontened**: `streamlit run app.py`
+3. **Start the FastAPI Backend**: `uvicorn main:app --reload`
+4. **Start the Streamlit Frontened**: `streamlit run app.py`
 
 
 ## 🧪 Example Usage
