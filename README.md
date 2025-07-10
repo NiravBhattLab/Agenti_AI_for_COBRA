@@ -45,19 +45,18 @@ $ python -m venv venv && source venv/bin/activate
 # Install dependencies
 $ pip install -r requirements.txt
 ```
-
-2. **Get API KEY** Supported services include OpenAI, Groq, HuggingFace or use Ollama.
-3. **Start the FastAPI server** using `uvicorn main:app --reload`
-4. **Start the Streamlit frontened** using `streamlit run app.py`
+2. **Get API KEY or use Ollama**: Supported services include OpenAI, Groq, HuggingFace or use Ollama.
+3. **Start the FastAPI server**: `uvicorn main:app --reload`
+4. **Start the Streamlit frontened**: `streamlit run app.py`
 
 
 ## 🧪 Example Usage
 
 ### Natural Language:
-> "What is the metadata of the loaded model?"
-> "What are first ten reactions in the model?"
-> "Run Flux Balance Analysis on the model."
-For more sample queries refere to ```Testing/demo_prompts.txt```
+- "What is the metadata of the loaded model?"
+- "What are first ten reactions in the model?"
+- "Run Flux Balance Analysis on the model."
+For more sample queries refer to ```Testing/demo_prompts.txt```
 
 ## 📦 MISCELLANEOUS
 
