@@ -90,4 +90,4 @@ pip install -r requirements.txt
 
 ---
 
-Built with ❤️ for enabling scientific discovery with AI.
+Built with ❤️ for enabling scientific discovery with AI by [Aadhitya Sriram](https://github.com/aadhitya-sriram) and [Pavan Kumar](https://github.com/pavan-kumar-s).
