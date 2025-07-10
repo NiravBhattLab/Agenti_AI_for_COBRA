@@ -64,15 +64,18 @@ Install dependencies with:
 pip install -r requirements.txt
 ```
 
-Install Ollama (if preferred):
+**Install Ollama (if preferred):**
 
 Server: [Download Server](https://ollama.com/download)
+
 Models: [Browse Models](https://ollama.com/search)
 
-Get API Keys:
+**Get API Keys:**
 
 Groq: [Get Groq Key](https://console.groq.com/keys)
+
 OpenAI: [Get OpenAI Key](https://platform.openai.com/api-keys)
+
 HuggingFace: [Get HF Token](https://huggingface.co/settings/tokens) (Required for Gated Repositories)
 
 ## 🧹 Future Work
