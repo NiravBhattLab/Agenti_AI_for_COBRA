@@ -23,8 +23,8 @@ This project provides an intuitive interface for interacting with SBML-based met
   - Reactions, metabolites, gene info
   - Simulation goals and interpretation
 - 🔌 Multi-backend LLM support:
-  - Local: **Ollama** (e.g., llama3, mistral)
-  - Remote: **OpenAI**, **Groq (Mixtral)**, **HuggingFace**
+  - Local: **Ollama**
+  - Remote: **OpenAI**, **Groq**, **HuggingFace**
 
 ## 🚀 Getting Started
 
