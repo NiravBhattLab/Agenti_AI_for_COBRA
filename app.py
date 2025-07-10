@@ -40,7 +40,7 @@ else:
     with st.sidebar:
         st.header("🧠 LLM Configuration")
 
-        provider = st.selectbox("Choose LLM Provider", ["ollama", "openai", "Hugging Face"])
+        provider = st.selectbox("Choose LLM Provider", ["ollama", "openai", "groq", "Hugging Face"])
         model = st.text_input("Model Name", value="llama3.1:latest" if provider == "ollama" else "")
         api_key = None
 
@@ -48,6 +48,8 @@ else:
             api_key = st.text_input("Enter API Key", type="password")
         elif provider == "Hugging Face":
             api_key = st.text_input("Enter HF TOKEN", type="password")
+        elif provider == "groq":
+            api_key = st.text_input("Enter API Key", type="password")
 
         if st.button("Apply LLM"):
             payload = {"provider": provider, "model": model}
