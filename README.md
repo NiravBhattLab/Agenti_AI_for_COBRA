@@ -1,4 +1,3 @@
-
 # 🧬 Metabolic Simulator
 
 A simple AI-powered web application that allows biological researchers to upload, explore, and simulate metabolic models using natural language queries.
