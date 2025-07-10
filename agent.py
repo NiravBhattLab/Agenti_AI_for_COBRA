@@ -12,7 +12,7 @@ import json
 
 MODEL_NAME = "llama3.1:latest"
 
-llm = Ollama(model=MODEL_NAME)
+llm = Ollama(model=MODEL_NAME, request_timeout=300)
 memory = Memory.from_defaults(session_id="metabolic_agent", token_limit=40000)
 
 all_tools = [
