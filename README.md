@@ -27,9 +27,6 @@ This project provides an intuitive interface for interacting with SBML-based met
   - Local: **Ollama** (e.g., llama3, mistral)
   - Remote: **OpenAI**, **Groq (Mixtral)**, **HuggingFace**
 
-- For Query ideas look into: ```Testing/demo_prompts.txt```
-
-
 ## 🚀 Getting Started
 
 1. Installation
@@ -56,6 +53,7 @@ $ pip install -r requirements.txt
 - "What is the metadata of the loaded model?"
 - "What are first ten reactions in the model?"
 - "Run Flux Balance Analysis on the model."
+
 For more sample queries refer to ```Testing/demo_prompts.txt```
 
 ## 📦 MISCELLANEOUS
