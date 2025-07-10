@@ -25,7 +25,7 @@ This project provides an intuitive interface for interacting with SBML-based met
 - 🔌 Multi-backend LLM support:
   - Local: **Ollama**
   - Remote: **OpenAI**, **Groq**, **HuggingFace**
-  - **Note:** Use OpenAI/ Groq for Best Results [Click Here](#📦-MISCELLANEOUS)
+  - **Note:** Use OpenAI/ Groq for Best Results [Click Here](#-miscellaneous)
 
 ## 🚀 Getting Started
 
