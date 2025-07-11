@@ -1,7 +1,7 @@
 Reaction Name,Reaction ID,Maximum Flux,Minimum Flux
-Phosphofructokinase,PFK,0.0,91.61000000000001
-Pyruvate formate lyase,PFL,0.0,32.000000000000014
-Glucose-6-phosphate isomerase,PGI,-16.66666666666667,10.000000000000002
-Phosphoglycerate kinase,PGK,-20.0,-2.4172548455578784e-15
-6-phosphogluconolactonase,PGL,0.0,25.714285714285726
-Acetaldehyde dehydrogenase (acetylating),ACALD,-19.161000000000005,-1.5948213258617017e-15
+Phosphofructokinase,PFK,0.0,49.51758780727549
+Pyruvate formate lyase,PFL,0.0,26.50486652420788
+Glucose-6-phosphate isomerase,PGI,-13.772067991764665,9.914657101625084
+Phosphoglycerate kinase,PGK,-18.893331576829038,-5.220570800981264
+6-phosphogluconolactonase,PGL,-9.449327758382642e-16,23.191537743842495
+Acetaldehyde dehydrogenase (acetylating),ACALD,-13.161866393942415,0.0

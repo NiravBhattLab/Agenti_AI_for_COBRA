@@ -29,8 +29,8 @@ app.add_middleware(
 )
 
 current_llm_config = {
-    "provider": "ollama",
-    "model": "llama3.1:latest",
+    "provider": "groq",
+    "model": "llama-3.1-8b-instant",
     "api_key": None
 }
 
@@ -104,7 +104,7 @@ async def get_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    
+
 @app.post("/set_llm/")
 def set_llm(config: LLMConfig):
     global agent, llm, current_llm_config

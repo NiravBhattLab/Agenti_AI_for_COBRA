@@ -4,7 +4,6 @@ import requests
 API_BASE = "http://localhost:8000"
 
 st.set_page_config(page_title="Metabolic Model Assistant", layout="wide")
-
 st.markdown(
     """
     <style>
@@ -25,6 +24,8 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "disclaimer" not in st.session_state:
     st.session_state.disclaimer = False
+if "llm" not in st.session_state:
+    st.session_state.llm = False
 
 @st.dialog("DISCLAIMER!")
 def popup():
@@ -40,8 +41,8 @@ else:
     with st.sidebar:
         st.header("🧠 LLM Configuration")
 
-        provider = st.selectbox("Choose LLM Provider", ["ollama", "openai", "groq", "Hugging Face"])
-        model = st.text_input("Model Name", value="llama3.1:latest" if provider == "ollama" else "")
+        provider = st.selectbox("Choose LLM Provider", ["groq", "ollama", "openai", "Hugging Face"])
+        model = st.text_input("Model Name", value="llama-3.1-8b-instant" if provider == "groq" else "")
         api_key = None
 
         if provider == "openai":
@@ -52,14 +53,18 @@ else:
             api_key = st.text_input("Enter API Key", type="password")
 
         if st.button("Apply LLM"):
-            payload = {"provider": provider, "model": model}
-            if provider != "ollama":
-                payload["api_key"] = api_key
-            res = requests.post(f"{API_BASE}/set_llm/", json=payload)
-            if res.status_code == 200:
-                st.success(f"LLM switched to {provider}: {model}")
+            if provider not in ['groq', 'openai', 'Hugging Face'] or not api_key:
+                st.error("API Key is required for Groq, OpenAI and Hugging Face providers.")
             else:
-                st.error(f"Failed to switch LLM: {res.json().get('detail')}")
+                payload = {"provider": provider, "model": model}
+                if provider != "ollama":
+                    payload["api_key"] = api_key
+                res = requests.post(f"{API_BASE}/set_llm/", json=payload)
+                if res.status_code == 200:
+                    st.success(f"LLM switched to {provider}: {model}")
+                    st.session_state.llm = True
+                else:
+                    st.error(f"Failed to switch LLM: {res.json().get('detail')}")
 
 
         st.header("📁 Model Management")
@@ -93,25 +98,29 @@ else:
 
     st.header("💬 Agentic Chat")
 
-    chat_container = st.container()
-    user_input = st.chat_input("Ask about the model...")
+    if st.session_state.llm:
+        chat_container = st.container()
+        user_input = st.chat_input("Ask about the model...")
 
-    if user_input:
-        st.session_state.chat_history.append(("user", user_input))
-        try:
-            res = requests.post(f"{API_BASE}/chat/", json={"message": user_input})
-            if res.status_code == 200:
-                response_text = res.json()["response"]  # ["raw"]["message"]["content"] # Here if OpenAI then chnage accordingly
-                st.session_state.chat_history.append(("agent", response_text))
-            else:
-                error_msg = res.json().get("detail", "Unknown error")
-                st.session_state.chat_history.append(("agent", f"⚠️ Error: {error_msg}"))
-        except Exception as e:
-            st.session_state.chat_history.append(("agent", f"⚠️ Exception: {str(e)}"))
+        if user_input:
+            st.session_state.chat_history.append(("user", user_input))
+            try:
+                res = requests.post(f"{API_BASE}/chat/", json={"message": user_input})
+                if res.status_code == 200:
+                    response_text = res.json()["response"]  # ["raw"]["message"]["content"] # Here if OpenAI then chnage accordingly
+                    st.session_state.chat_history.append(("agent", response_text))
+                else:
+                    error_msg = res.json().get("detail", "Unknown error")
+                    st.session_state.chat_history.append(("agent", f"⚠️ Error: {error_msg}"))
+            except Exception as e:
+                st.session_state.chat_history.append(("agent", f"⚠️ Exception: {str(e)}"))
 
-    with chat_container:
-        for role, msg in st.session_state.chat_history:
-            if role == "user":
-                st.chat_message("user").write(msg)
-            else:
-                st.chat_message("assistant").write(msg)
+        with chat_container:
+            for role, msg in st.session_state.chat_history:
+                if role == "user":
+                    st.chat_message("user").write(msg)
+                else:
+                    st.chat_message("assistant").write(msg)
+    else:
+        st.warning("Please configure the LLM in the sidebar to start chatting.")
+        st.info("Supported providers: groq, ollama, openai, Hugging Face")

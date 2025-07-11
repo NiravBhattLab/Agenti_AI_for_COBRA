@@ -5,14 +5,18 @@ from tools import reaction_info_tool, metabolite_info_tool, gene_info_tool
 from tools import run_fba_tool, set_objective_tool, run_fva_tool
 from tools import gene_knockout_tool, reaction_knockout_tool, flux_sampler_tool
 from llama_index.llms.ollama import Ollama
+from llama_index.llms.groq import Groq
 from llama_index.core.llms import ChatMessage
 from prompts import system_prompt, agent_context, llm_system_prompt, llm_prompt
 from llama_index.core.memory import Memory
+from dotenv import load_dotenv
+import os
 import json
 
-MODEL_NAME = "llama3.1:latest"
-llm = Ollama(model=MODEL_NAME, request_timeout=300)
-memory = Memory.from_defaults(session_id="metabolic_agent", token_limit=40000)
+load_dotenv()
+MODEL_NAME = "llama-3.1-8b-instant"
+llm = Groq(model=MODEL_NAME, api_key=os.environ["GROQ_API_KEY"]) # Ollama(model=MODEL_NAME, request_timeout=300)
+memory = Memory.from_defaults(session_id="metabolic_agent", token_limit=40000) # For future integration
 
 all_tools = [
     load_model_tool, model_data_tool, model_info_tool, # current_model_tool, check_load_model_tool,
