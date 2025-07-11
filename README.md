@@ -6,6 +6,7 @@ A simple AI-powered web application that allows biological researchers to upload
 
 This project provides an intuitive interface for interacting with SBML-based metabolic models. It combines AI tools and metabolic simulation to help researchers run analyses like Flux Balance Analysis (FBA), view model statistics, and modify objectives — all through simple text-based interaction.
 
+***This repository is currently under development! So please periodically pull this repository.***
 
 ## ✨ Features
 
