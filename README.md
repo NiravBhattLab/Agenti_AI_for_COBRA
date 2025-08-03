@@ -34,7 +34,7 @@ This project provides an intuitive interface for interacting with SBML-based met
 
 ```bash
 # Clone repository
-$ git clone https://github.com/your-org/Agenti_AI_for_COBRA.git
+$ git clone https://github.com/NiravBhattLab/Agenti_AI_for_COBRA.git
 $ cd Agenti_AI_for_COBRA
 
 # Create virtual environment
