@@ -1,3 +1,4 @@
+import os
 from llama_index.llms.openai import OpenAI
 from llama_index.llms.ollama import Ollama
 from llama_index.llms.groq import Groq
@@ -8,8 +9,9 @@ def get_llm(provider: str, model: str, api_key: str = None):
         return Ollama(model=model, request_timeout=300)
     elif provider == "openai":
         return OpenAI(model=model, api_key=api_key)
-    elif provider == "hf-local":
-        return HuggingFaceLLM(model_name=model)
+    elif provider == "Hugging Face":
+        os.environ["HUGGING_FACE_TOKEN"] = api_key
+        return HuggingFaceLLM(model_name=model, tokenizer_name=model)
     elif provider == "groq":
         return Groq(model=model, api_key=api_key)
     else:

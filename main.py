@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from tools import set_model_objective
 from llm_factory import get_llm
 from pydantic import BaseModel
 from agent import agent_query, setup_agent
@@ -9,6 +10,7 @@ from pathlib import Path
 from tools import set_model_manager
 import pandas as pd
 import os
+import re
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -39,6 +41,9 @@ class LLMConfig(BaseModel):
     model: str
     api_key: str = None
 
+class ObjectiveInput(BaseModel):
+    objective_str: str
+    direction: str = "max"
 
 class ChatRequest(BaseModel):
     message: str
@@ -79,6 +84,50 @@ async def upload_csv(file: UploadFile = File(...)):
         return {"status": "error", "detail": str(e)}
 
 
+@app.post("/set_objective/")
+async def set_objective(obj: ObjectiveInput):
+    try:
+        expr_str, dirr = obj.objective_str, obj.direction.lower()
+        if expr_str is None:
+            raise HTTPException(status_code=400, detail="Objective expression is empty.")
+        clean_str = expr_str.replace(" ", "")
+        if not clean_str:
+            raise HTTPException(status_code=400, detail="Objective expression is empty after removing spaces.")
+        if dirr not in {"max", "min"}:
+            raise HTTPException(status_code=400, detail="Direction must be 'max' or 'min'.")
+        terms = re.split(r"(?=[+-])", clean_str)
+        objective_dict = {}
+        for term in terms:
+            if not term:
+                continue
+            m = re.fullmatch(r"([+-]?\d*\.?\d*)\*?([A-Za-z0-9_]+)", term)
+            if not m:
+                raise HTTPException(status_code=400, detail=f"Could not parse term: {term}")
+            coeff_str, rxn_id = m.groups()
+            if coeff_str in ("", "+", "-"):
+                coeff = 1.0 if coeff_str != "-" else -1.0
+            else:
+                coeff = float(coeff_str)
+            objective_dict[rxn_id] = objective_dict.get(rxn_id, 0.0) + coeff
+        if not objective_dict:
+            raise HTTPException(status_code=400, detail="No valid terms found in objective expression.")
+        result = set_model_objective(objective_dict, dirr)
+        if isinstance(result, dict):
+            if "objective" in result:
+                result["objective"] = str(result["objective"])
+            if "direction" in result:
+                result["direction"] = str(result["direction"])
+            return result
+        return {
+            "status": "Objective set successfully.",
+            "objective": str(getattr(model_manager.get_current_model().objective, "expression", "")),
+            "direction": dirr,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/get_stats/")
 async def get_stats():
     try:
@@ -115,6 +164,20 @@ def set_llm(config: LLMConfig):
         return {"status": "LLM updated", "provider": config.provider, "model": config.model}
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Failed to set LLM: {str(e)}"})
+
+@app.post("/set_sampler/")
+def set_sampler(req: dict):
+    try:
+        method = (req or {}).get("method")
+        if not method:
+            raise HTTPException(status_code=400, detail="'method' is required in JSON body.")
+        details = model_manager.set_sampler(method)
+        return {"status": "ok", "sampler": details["response"]}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to set Sampler: {e}")
 
 
 @app.post("/chat/")

@@ -13,9 +13,7 @@ from dotenv import load_dotenv
 import os
 import json
 
-load_dotenv()
-MODEL_NAME = "llama-3.1-8b-instant"
-llm = Groq(model=MODEL_NAME, api_key=os.environ["GROQ_API_KEY"]) # Ollama(model=MODEL_NAME, request_timeout=300)
+agent = None
 memory = Memory.from_defaults(session_id="metabolic_agent", token_limit=40000) # For future integration
 
 all_tools = [
@@ -24,14 +22,6 @@ all_tools = [
     run_fba_tool, set_objective_tool, run_fva_tool,
     gene_knockout_tool, reaction_knockout_tool, flux_sampler_tool
 ]
-
-agent = ReActAgent.from_tools(
-    tools=all_tools,
-    llm=llm,
-    system_prompt=system_prompt,
-    context=agent_context,
-    verbose=True
-)
 
 def setup_agent(new_llm):
     global agent, llm

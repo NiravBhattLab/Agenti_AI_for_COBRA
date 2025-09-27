@@ -20,5 +20,17 @@
 # result = run_fba(bounds)
 # print(result)
 
+
+from llama_index.core.agent import ReActAgent
 from llama_index.llms.huggingface import HuggingFaceLLM
-llm = HuggingFaceLLM(model_name="mistralai/Mistral-7B-Instruct-v0.3")
+
+llm = HuggingFaceLLM(model_name="Qwen/Qwen3-1.7B", tokenizer_name="Qwen/Qwen3-1.7B")
+
+agent = ReActAgent.from_tools(
+    tools=[],
+    llm=llm,
+    verbose=True
+)
+
+agent_response = agent.query("Heloo there!")
+print(agent_response)

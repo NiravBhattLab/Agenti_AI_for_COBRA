@@ -1,6 +1,7 @@
 import cobra
 from cobra.io import read_sbml_model
 from cobra.io.web.load import load_model, BiGGModels, BioModels
+from cobra.io.sbml import validate_sbml_model
 
 class ModelManager:
     def __init__(self):
@@ -8,6 +9,14 @@ class ModelManager:
         self.current_model_id = None
         self.bounds_data = None
         self.objective = False
+        self.sampler = "optgp"
+
+    def validate_model(self, file_path):
+        _, errors = validate_sbml_model(file_path)
+        for key in ("SBML_FATAL", "COBRA_FATAL", "SBML_ERROR", "SBML_SCHEMA_ERROR", "COBRA_ERROR"):
+            if errors.get(key):
+                return False
+        return True
 
     def load_model_by_id(self, model_id):
         if "xml" not in model_id:
@@ -28,8 +37,9 @@ class ModelManager:
 
     def load_sbml(self, file_path):
         model_id = str(file_path).split("/")[-1].split(".")[0]
+        if not self.validate_model(file_path):
+            return {"response": f"Error model uploaded is not a valid SBML format."}
         model = read_sbml_model(file_path)
-        # model_oject = Model(model, model_id)
         self.models[model_id] = model
         self.current_model_id = model_id
         if model.objective:
@@ -46,7 +56,11 @@ class ModelManager:
             return {"response": "Invalid model ID."}
         self.current_model_id = model_id   
 
-
+    def set_sampler(self, sampler_method):
+        if not self.current_model_id:
+            return {"response": "No model is currently loaded."}
+        self.sampler = sampler_method
+        return {"response": "Sampler is successfully set."}
 
 
 

@@ -200,7 +200,6 @@ def set_model_objective(objective_dict, direction="max"):
             "objective": model.objective.expression,
             "direction": model.objective.direction
         }
-
     except Exception as e:
         return {"error" : str(e)}  
 def run_fva(rxn_names, fraction_of_optimum=0.9):
@@ -339,7 +338,7 @@ def recommend_sampling_config(model):
         method = "achr"
         
     thinning = max(10, int(n_rxns / 5))
-    thinning = min(thinning, 500)  # cap for efficiency
+    thinning = min(thinning, 500)
 
     processes = None
     if method == "optgp":
@@ -364,6 +363,8 @@ def sample_metabolic_model(reaction_count=1000):
     model = model_manager.get_current_model()
     # error handling
     config = recommend_sampling_config(model)
+    config["method"] = model_manager.sampler
+    
     if config["method"] == "achr":
         sampler = ACHRSampler(model, thinning=config["thinning"])
     else:
