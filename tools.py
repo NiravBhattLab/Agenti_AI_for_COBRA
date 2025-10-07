@@ -5,6 +5,7 @@ from models import ModelManager
 from cobra.sampling import OptGPSampler, ACHRSampler
 import multiprocessing
 import psutil
+import subprocess
 from ptypes import LoadModelInput
 import pandas as pd
 import os
@@ -382,7 +383,63 @@ def sample_metabolic_model(reaction_count=1000):
         "save_path": output_dir,
         "samples": subset.to_dict(orient="records")
     }
+def build_model_with_carveme(fasta_file: str, model_id: str = None, output_dir: str = "models") -> dict:
+        """
+        Builds Genome scale metabolic model using carveme with input as a fasta file of protein sequences
+        """
+    
+        if not os.path.exists(fasta_file):
+            return {"error": f"FASTA file {fasta_file} not found."}
 
+        os.makedirs(output_dir, exist_ok=True)
+
+        if not model_id:
+            model_id = os.path.splitext(os.path.basename(fasta_file))[0]
+
+        out_path = os.path.join(output_dir, f"{model_id}.xml")
+
+        # Detect if input looks like DNA (ATCG only) vs protein
+        def is_dna(seq: str) -> bool:
+            return all(base in "ACGTNacgtn" for base in seq)
+
+        # Peek into file
+        with open(fasta_file, "r") as f:
+            lines = [line.strip() for line in f if not line.startswith(">")]
+            sample = "".join(lines[:5])  # take a few lines to decide
+
+        protein_fasta = fasta_file
+        if is_dna(sample):
+            print("Detected genome sequence (DNA). Running Prodigal...")
+            protein_fasta = os.path.join(output_dir, f"{model_id}_proteins.faa")
+
+            prodigal_cmd = [
+                "prodigal",
+                "-i", fasta_file,
+                "-a", protein_fasta,   # output protein sequences
+                "-p", "meta"           # 'meta' mode works well for fragmented genomes
+            ]
+            try:
+                subprocess.run(prodigal_cmd, check=True)
+            except FileNotFoundError:
+                # Prodigal binary not found on PATH (common on Windows)
+                return {
+                    "error": "Prodigal executable not found. Please install Prodigal or run this code in an environment where Prodigal is available.",
+                    "fix": {
+                        "recommended": "Use WSL (Ubuntu) or a Linux environment and install with: sudo apt update && sudo apt install prodigal",
+                        "conda": "If you use conda (recommended for bioinformatics), run: conda install -c bioconda prodigal"}
+                                                        }
+            except subprocess.CalledProcessError as e:
+                return {"error": "Prodigal failed to run successfully.", "detail": str(e)}
+
+        # Run CarveMe CLI based command for protein seq
+        cmd = ["carve", fasta_file, "-o", out_path]
+        subprocess.run(cmd, check=True)
+
+        return {
+            "status": "success",
+            "model_id": model_id,
+            "output_file": out_path,
+        }
 
 ######### TOOL SETUP
 
@@ -474,16 +531,22 @@ flux_sampler_tool = FunctionTool.from_defaults(
     description="Flux Sampling / Flux Sample Analysis a metabolic model given the number of samples.",
     return_direct=return_direct
 )
+carveme_tool = FunctionTool.from_defaults(
+    fn=build_model_with_carveme,
+    name="build_model_with_carveme",
+    description="Creates Genome scale metabolic model using Fasta file (protein or genome)",
+    return_direct=return_direct
+)
 
 
-
-
-
-
-# TEST CODE
+#TEST CODE
 
 # model_manager = ModelManager()
 # model_manager.load_model_by_id('e_coli_core')
 # file_path = r"E:\INTERNSHIP\IITM\metabolic\uploads\bounds_data\e_coli_bounds.csv"
 # model_manager.bounds_dict = pd.read_csv(file_path).values.tolist()
 # print(run_fba())
+
+#result = build_model_with_carveme("uploads/U00096.3.fasta", model_id="ecoli_draft",output_dir="outputs/")
+#result = build_model_with_carveme("uploads/UP000000425_122586.fasta", output_dir="outputs/")
+#print(result)

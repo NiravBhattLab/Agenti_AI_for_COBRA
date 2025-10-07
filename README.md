@@ -38,10 +38,28 @@ $ git clone https://github.com/NiravBhattLab/Agenti_AI_for_COBRA.git
 $ cd Agenti_AI_for_COBRA
 
 # Create virtual environment
-$ python -m venv venv && ./venv/bin/activate.ps1
+#for unix-like shells
+$ python -m venv venv && ./venv/bin/activate.ps1 
+#for windows PowerShell
+> python -m venv venv
+> .\venv\Scripts\Activate.ps1 
 
 # Install dependencies
 $ pip install -r requirements.txt
+
+# Download DIAMOND (latest release for macOS or Linux)
+$ wget https://github.com/bbuchfink/diamond/releases/download/v2.1.13/diamond-macosx.tar.gz # or Download diamond (suitable for your os) from  https://github.com/bbuchfink/diamond/releases
+$ tar -xvzf diamond-macosx.tar.gz
+
+# Move into venv/bin and make executable
+$ mv diamond ./venv/bin/
+$ chmod +x ./venv/bin/diamond
+
+# For macOS only: remove quarantine flag if present
+$ xattr -d com.apple.quarantine ./venv/bin/diamond
+
+# Verify installation
+$ diamond --version
 ```
 2. **Get API KEY or use Ollama**: Supported services include OpenAI, Groq, HuggingFace or use Ollama.
 3. **Start the FastAPI Backend**: `uvicorn main:app --reload`
@@ -91,4 +109,4 @@ pip install -r requirements.txt
 
 ---
 
-Built with ❤️ for enabling scientific discovery with AI by [Aadhitya Sriram](https://github.com/aadhitya-sriram) and [Pavan Kumar](https://github.com/pavan-kumar-s).
+Built with ❤️ for enabling scientific discovery with AI by [Aadhitya Sriram](https://github.com/aadhitya-sriram), [Pavan Kumar](https://github.com/pavan-kumar-s) and [Varshini](https://github.com/Varshi1605)
