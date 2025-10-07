@@ -62,10 +62,6 @@ $ xattr -d com.apple.quarantine ./venv/bin/diamond
 $ diamond --version
 ```
 2. **Get API KEY or use Ollama**: Supported services include OpenAI, Groq, HuggingFace or use Ollama.
-- Groq: [Get Groq Key](https://console.groq.com/keys)
-- OpenAI: [Get OpenAI Key](https://platform.openai.com/api-keys)
-- HuggingFace: [Get HF Token](https://huggingface.co/settings/tokens) 
-
 3. **Start the FastAPI Backend**: `uvicorn main:app --reload`
 4. **Start the Streamlit Frontened**: `streamlit run app.py`
 
@@ -113,4 +109,4 @@ pip install -r requirements.txt
 
 ---
 
-Built with ❤️ for enabling scientific discovery with AI by [Aadhitya Sriram](https://github.com/aadhitya-sriram),[Pavan Kumar](https://github.com/pavan-kumar-s) and [Varshini](https://github.com/Varshi1605)
+Built with ❤️ for enabling scientific discovery with AI by [Aadhitya Sriram](https://github.com/aadhitya-sriram), [Pavan Kumar](https://github.com/pavan-kumar-s) and [Varshini](https://github.com/Varshi1605)
