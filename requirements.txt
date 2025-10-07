@@ -3,6 +3,7 @@ torch
 cobra
 fastapi
 uvicorn
+carveme
 pydantic
 requests
 streamlit

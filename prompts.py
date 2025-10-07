@@ -44,6 +44,7 @@ The system uses the following tools:
 - `metabolite_info(metabolite_id)`: Returns detailed information/Metadata about a specific metabolite, including its compartments and associated reactions.
 - `gene_info(gene_id)`: Returns detailed information/Metadata about a specific gene, including its associated reactions and gene-reaction rules.
 - `run_flux_balance_analysis()`: Runs Flux Balance Analysis on a model and returns Objective Value and Status of the simulation. **RUN DIRECTLY**
+- `build_model_with_carveme(fasta_file, model_id, output_dir)`: Builds a draft genome-scale metabolic model from a FASTA file of protein sequences or a genome FASTA. If a genome (DNA) FASTA is provided the tool will run Prodigal to predict proteins before running CarveMe. The tool returns a dict with `status`, `model_id`, and `output_file` (path to the generated SBML/XML model)
 
 
 The system maintains:
