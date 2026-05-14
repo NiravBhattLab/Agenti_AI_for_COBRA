@@ -1,19 +1,22 @@
 from llama_index.core.tools import FunctionTool
 from cobra.flux_analysis import flux_variability_analysis
 from cobra.flux_analysis import single_gene_deletion, double_gene_deletion, single_reaction_deletion, double_reaction_deletion
-from models import ModelManager
 from cobra.sampling import OptGPSampler, ACHRSampler
 import multiprocessing
 import psutil
-from ptypes import LoadModelInput
-import pandas as pd
 import os
 
 return_direct = True
 model_manager = None
+session_dir = None
+
 def set_model_manager(manager):
     global model_manager
     model_manager = manager
+
+def set_session_dir(path):
+    global session_dir
+    session_dir = str(path)
 
 def get_current_model_id() -> str:
     """
@@ -38,10 +41,10 @@ def load_model(model_id: str) -> str:
     This function simulates fetching a model from a database or API.
     """
     try:
-        model_manager.load_model_by_id(model_id)
-        return {"response": f"Model {model_id} loaded successfully.", "model_id": model_id}
+        loaded_id = model_manager.load_model_by_id(model_id)
+        return {"response": f"Model '{loaded_id}' loaded successfully.", "model_id": loaded_id}
     except Exception as e:
-        return {"error" : str(e)}
+        return {"error": str(e)}
 def model_data() -> dict:
     """
     Returns metadata for a given a model.
@@ -64,7 +67,7 @@ def model_data() -> dict:
             "genes_count": len(model.genes),
             "groups_count": len(model.groups),
             "compartments_count": len(model.compartments),
-            "Compartments": str([v for k,v in model.compartments.items()]),
+            "Compartments": str(list(model.compartments.values())),
         }
         return data
 
@@ -85,11 +88,11 @@ def model_info(query: str, count=10) -> dict:
         }
     try:
         if query == "reactions":
-            return {"reactions" : [rxn.name for rxn in model.reactions][:count]}
+            return {"reactions": [f"{rxn.id} ({rxn.name})" for rxn in model.reactions][:count]}
         elif query == "genes":
-            return {"genes" : [gn.name for gn in model.genes][:count]}
+            return {"genes": [f"{gn.id} ({gn.name})" for gn in model.genes][:count]}
         elif query == "metabolites":
-            return {"metabolites" : [mb.name for mb in model.metabolites][:count]}
+            return {"metabolites": [f"{mb.id} ({mb.name})" for mb in model.metabolites][:count]}
         else:
             return {
                 "error": f"Unknown query: {query}",
@@ -99,22 +102,44 @@ def model_info(query: str, count=10) -> dict:
             "error": str(e),
             "model_id": model_manager.current_model_id
         }
+def _find_reaction(model, query: str):
+    q = query.strip().lower()
+    return (
+        next((r for r in model.reactions if r.id.lower() == q), None) or
+        next((r for r in model.reactions if r.name.lower() == q), None) or
+        next((r for r in model.reactions if q in r.name.lower()), None)
+    )
+
+def _find_metabolite(model, query: str):
+    q = query.strip().lower()
+    return (
+        next((m for m in model.metabolites if m.id.lower() == q), None) or
+        next((m for m in model.metabolites if m.name.lower() == q), None) or
+        next((m for m in model.metabolites if q in m.name.lower()), None)
+    )
+
+def _find_gene(model, query: str):
+    q = query.strip().lower()
+    return (
+        next((g for g in model.genes if g.id.lower() == q), None) or
+        next((g for g in model.genes if g.name.lower() == q), None) or
+        next((g for g in model.genes if q in g.name.lower()), None)
+    )
+
 def reaction_info(rxn_name: str) -> dict:
     """
     Returns information about a specific reaction in the model.
     """
     try:
         model = model_manager.get_current_model()
-        for rxn in model.reactions:
-            if rxn.name == rxn_name:
-                rxn_name = rxn.id
-                break
-        reaction = model.reactions.get_by_id(rxn_name)    
+        reaction = _find_reaction(model, rxn_name)
+        if reaction is None:
+            return {"error": f"Reaction '{rxn_name}' not found in model."}
         return {
             "Reaction id": reaction.id,
             "name": reaction.name,
             "Stochiometry": reaction.build_reaction_string(),
-            "GPR" : str(reaction.gpr) or "Not Set",
+            "GPR": str(reaction.gpr) or "Not Set",
             "lower_bound": reaction.lower_bound,
             "upper_bound": reaction.upper_bound,
         }
@@ -126,7 +151,9 @@ def metabolite_info(mb_id: str) -> dict:
     """
     try:
         model = model_manager.get_current_model()
-        metabolite = model.metabolites.get_by_id(mb_id)
+        metabolite = _find_metabolite(model, mb_id)
+        if metabolite is None:
+            return {"error": f"Metabolite '{mb_id}' not found in model."}
         return {
             "Metabolite id": metabolite.id,
             "name": metabolite.name,
@@ -139,12 +166,13 @@ def metabolite_info(mb_id: str) -> dict:
         return {"error": str(e)}
 def gene_info(gn_id: str) -> dict:
     """
-    Returns information about a specific reaction in the model.
-    This function simulates fetching reaction data from a database or API.
+    Returns information about a specific gene in the model.
     """
     try:
         model = model_manager.get_current_model()
-        gene = model.genes.get_by_id(gn_id)
+        gene = _find_gene(model, gn_id)
+        if gene is None:
+            return {"error": f"Gene '{gn_id}' not found in model."}
         return {
             "Gene ID": gene.id,
             "name": gene.name,
@@ -158,25 +186,28 @@ def run_fba() -> str:
     Performs Flux Balance Analysis (FBA) on the current metabolic model.
     Returns Objective value and Model Status.
     """
-    model = model_manager.get_current_model()
-    bounds = model_manager.bounds_data
-
-    if not bounds:
-        return {"error": "No Bounds for model reactions are found."}
-    if not model_manager.objective:
-        return {"error": "No Objective Function is set for the model."}
     try:
-        for rxn_id, lval, uval in bounds:
-            if rxn_id in model.reactions:
-                model.reactions.get_by_id(rxn_id).bounds = (lval, uval)
-    except:
-        return {"error": "Wrong Reaction bounds given."}
-    
+        model = model_manager.get_current_model()
+    except Exception as e:
+        return {"error": str(e)}
+
+    if not model.objective.expression:
+        return {"error": "No objective function is set on the model."}
+
+    bounds = model_manager.bounds_data
+    if bounds:
+        try:
+            for rxn_id, lval, uval in bounds:
+                if model.reactions.has_id(rxn_id):
+                    model.reactions.get_by_id(rxn_id).bounds = (lval, uval)
+        except Exception:
+            return {"error": "Wrong reaction bounds given in the uploaded CSV."}
+
     solution = model.optimize()
     model_manager.objective = solution.objective_value
     return {
-        "Objective value" : str(solution.objective_value),
-        "status" : str(solution.status),
+        "Objective value": str(solution.objective_value),
+        "status": str(solution.status),
     }
 def set_model_objective(objective_dict, direction="max"):
     """
@@ -202,25 +233,33 @@ def set_model_objective(objective_dict, direction="max"):
         }
     except Exception as e:
         return {"error" : str(e)}  
-def run_fva(rxn_names, fraction_of_optimum=0.9):
+def run_fva(rxn_names=None, fraction_of_optimum=0.9):
     """
-    Runs Flux Variability Analysis (FVA) on the model given a Reaction List and a Fraction of Optimum (FO) Value.    
+    Runs Flux Variability Analysis (FVA) on the model given a Reaction List and a Fraction of Optimum (FO) Value.
     """
     try:
         model = model_manager.get_current_model()
         rxn_obj_list = []
 
-        if not model_manager.objective:
+        if not model.objective.expression:
             return {"error": "No Objective Function is set for the model."}
 
-        for name in rxn_names:
-            match = next(
-                (rxn for rxn in model.reactions if name.lower() in rxn.name.lower()),
-                None
-            )
-            if match is None:
-                raise ValueError(f"Reaction name '{name}' not found in model.")
-            rxn_obj_list.append(match)
+        if not rxn_names:
+            rxn_obj_list = list(model.reactions)
+        else:
+            for name in rxn_names:
+                match = next(
+                    (rxn for rxn in model.reactions if rxn.id.lower() == name.lower()),
+                    None
+                )
+                if match is None:
+                    match = next(
+                        (rxn for rxn in model.reactions if name.lower() in rxn.name.lower()),
+                        None
+                    )
+                if match is None:
+                    raise ValueError(f"Reaction '{name}' not found in model.")
+                rxn_obj_list.append(match)
 
         fva_result = flux_variability_analysis(model, rxn_obj_list, fraction_of_optimum=fraction_of_optimum)
 
@@ -229,9 +268,9 @@ def run_fva(rxn_names, fraction_of_optimum=0.9):
         fva_df.columns = ["Reaction Name", "Reaction ID", "Maximum Flux", "Minimum Flux"]
 
         if len(fva_df) > 5:
-            output_dir = os.path.join(os.getcwd(), 'outputs/fva')
+            output_dir = os.path.join(session_dir, 'fva')
             os.makedirs(output_dir, exist_ok=True)
-            csv_path = os.path.join(output_dir, f"fva_result.csv")
+            csv_path = os.path.join(output_dir, "fva_result.csv")
             fva_df.to_csv(csv_path, index=False)
 
             return {
@@ -255,8 +294,9 @@ def gene_knockout_simulation(gene_names: list[str], type: str = "single") -> dic
         model = model_manager.get_current_model()
         valid_genes = []
         seen = set()
-        for gene in model.genes:
-            if gene.name in gene_names and gene.id not in seen:
+        for name in gene_names:
+            gene = _find_gene(model, name)
+            if gene and gene.id not in seen:
                 valid_genes.append(gene)
                 seen.add(gene.id)
 
@@ -277,7 +317,8 @@ def gene_knockout_simulation(gene_names: list[str], type: str = "single") -> dic
         })
 
         if len(result) > 5:
-            file_path = os.path.join(os.getcwd(), "outputs/knockouts/gene_knockout_result.csv")
+            file_path = os.path.join(session_dir, "knockouts", "gene_knockout_result.csv")
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
             result.to_csv(file_path, index=False)
             subset = result.iloc[:5, :5]
             return {"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."}
@@ -294,8 +335,9 @@ def reaction_knockout_simulation(reaction_names: list[str], type: str = "single"
         model = model_manager.get_current_model()
         valid_rxns = []
         seen = set()
-        for rxn in model.reactions:
-            if rxn.name in reaction_names and rxn.id not in seen:
+        for name in reaction_names:
+            rxn = _find_reaction(model, name)
+            if rxn and rxn.id not in seen:
                 valid_rxns.append(rxn)
                 seen.add(rxn.id)
 
@@ -316,7 +358,8 @@ def reaction_knockout_simulation(reaction_names: list[str], type: str = "single"
         })
 
         if len(result) > 5:
-            file_path = os.path.join(os.getcwd(), "outputs/knockouts/reaction_knockout_result.csv")
+            file_path = os.path.join(session_dir, "knockouts", "reaction_knockout_result.csv")
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
             result.to_csv(file_path, index=False)
             subset = result.iloc[:5, :5]
             return {"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."}
@@ -371,15 +414,17 @@ def sample_metabolic_model(reaction_count=1000):
         sampler = OptGPSampler(model, thinning=config["thinning"], processes=config["processes"])
     samples = sampler.sample(reaction_count)
     subset = samples.iloc[:5, :5]
-    output_dir = os.path.join(os.getcwd(), 'outputs/flux_sampling', 'flux_sampling_result.csv')
-    samples.to_csv(output_dir, index=False)
+    sampling_dir = os.path.join(session_dir, 'flux_sampling')
+    os.makedirs(sampling_dir, exist_ok=True)
+    csv_path = os.path.join(sampling_dir, 'flux_sampling_result.csv')
+    samples.to_csv(csv_path, index=False)
     return {
         "status": "success",
         "n_samples": reaction_count,
         "method": config["method"],
         "thinning": config["thinning"],
         "processes": config["processes"],
-        "save_path": output_dir,
+        "save_path": csv_path,
         "samples": subset.to_dict(orient="records")
     }
 
@@ -401,8 +446,12 @@ current_model_tool = FunctionTool.from_defaults(
 load_model_tool = FunctionTool.from_defaults(
     fn=load_model,
     name="load_model",
-    description="Loads a model to be used for Analysis. It fetches a model from an API.",
-    fn_schema=LoadModelInput,
+    description=(
+        "Loads a metabolic model by its BiGG or BioModels ID. "
+        "Use the plain model ID exactly as it appears in the database — for example: "
+        "'e_coli_core', 'iJN1463', 'iML1515'. "
+        "Do NOT use prefixes like 'BIGG:' or 'BioModels:' — just pass the bare ID string."
+    ),
     return_direct=return_direct
 )
 model_data_tool = FunctionTool.from_defaults(
@@ -453,7 +502,7 @@ set_objective_tool = FunctionTool.from_defaults(
 run_fva_tool = FunctionTool.from_defaults(
     fn=run_fva,
     name="run_flux_variability_analysis",
-    description="Runs Flux Variability Analysis (FVA) on the model given a Reaction List and a Fraction of Optimum (FO) Value",
+    description="Runs Flux Variability Analysis (FVA) on the model. Optionally accepts a list of reaction names (rxn_names); if not provided or empty, runs FVA on all reactions in the model. Also accepts a fraction_of_optimum value (default 0.9).",
     return_direct=return_direct
 )
 gene_knockout_tool = FunctionTool.from_defaults(

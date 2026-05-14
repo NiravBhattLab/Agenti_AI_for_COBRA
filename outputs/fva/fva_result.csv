@@ -1,7 +1,96 @@
 Reaction Name,Reaction ID,Maximum Flux,Minimum Flux
-Phosphofructokinase,PFK,0.0,49.51758780727549
-Pyruvate formate lyase,PFL,0.0,26.50486652420788
-Glucose-6-phosphate isomerase,PGI,-13.772067991764665,9.914657101625084
-Phosphoglycerate kinase,PGK,-18.893331576829038,-5.220570800981264
-6-phosphogluconolactonase,PGL,-9.449327758382642e-16,23.191537743842495
-Acetaldehyde dehydrogenase (acetylating),ACALD,-13.161866393942415,0.0
+Phosphofructokinase,PFK,1.1717056706103641,25.29064376594421
+Pyruvate formate lyase,PFL,0.0,11.322324024008575
+Glucose-6-phosphate isomerase,PGI,-14.299039254154508,9.838761481964324
+Phosphoglycerate kinase,PGK,-17.909169012223234,-9.863235433516984
+6-phosphogluconolactonase,PGL,0.0,24.137800736118812
+Acetaldehyde dehydrogenase (acetylating),ACALD,-2.542370370370358,0.0
+2 oxoglutarate reversible transport via symport,AKGt2r,-1.4300833333333223,0.0
+Phosphoglycerate mutase,PGM,-16.732521095240944,-8.686587516534669
+Phosphate reversible transport via symport,PIt2r,2.8934055429162777,3.2148950476847653
+Alcohol dehydrogenase (ethanol),ALCD2x,-2.2143225806451547,0.0
+Acetaldehyde reversible transport,ACALDt,-2.542370370370334,0.0
+Acetate kinase,ACKr,-3.8135555555555243,0.0
+Phosphoenolpyruvate carboxylase,PPC,0.0,20.346865929486825
+"Aconitase (half-reaction A, Citrate hydro-lyase)",ACONTa,0.8485865224814156,8.894520101187702
+"Aconitase (half-reaction B, Isocitrate hydro-lyase)",ACONTb,0.8485865224814151,8.894520101187693
+ATP maintenance requirement,ATPM,8.39,25.550999999999927
+Phosphoenolpyruvate carboxykinase,PPCK,0.0,17.160999999999934
+Acetate reversible transport via proton symport,ACt2r,-3.8135555555555425,0.0
+Phosphoenolpyruvate synthase,PPS,0.0,17.160999999999934
+Adenylate kinase,ADK1,0.0,17.16099999999995
+2-Oxogluterate dehydrogenase,AKGDH,0.0,8.045933578706284
+ATP synthase (four protons for one ATP),ATPS4r,34.82561783032096,59.38106236856608
+Phosphotransacetylase,PTAr,0.0,3.8135555555555447
+Pyruvate kinase,PYK,0.0,21.382992887528562
+Biomass Objective Function with GAM,BIOMASS_Ecoli_core_w_GAM,0.7865293562715879,0.8739215069684305
+Pyruvate transport in via proton symport,PYRt2,-2.542370370370362,0.0
+CO2 transporter via diffusion,CO2t,-26.528849979184457,-15.206525955175877
+Ribulose 5-phosphate 3-epimerase,RPE,-0.6209090068714743,15.526509856124523
+Citrate synthase,CS,0.848586522481414,8.894520101187686
+Ribose-5-phosphate isomerase,RPI,-8.611290879994291,-0.5653573012880175
+Succinate transport via proton symport (2 H),SUCCt2_2,0.0,22.881333333333195
+Cytochrome oxidase bd (ubiquinol-8: 2 protons),CYTBD,35.98486455857561,51.23908678079777
+D lactate transport via proton symport,D_LACt2,-2.145124999999994,0.0
+Enolase,ENO,8.686587516534669,16.732521095240944
+Succinate transport out via proton antiport,SUCCt3,0.0,22.881333333333277
+Ethanol reversible transport via proton symport,ETOHt2r,-2.214322580645147,0.0
+Succinate dehydrogenase (irreversible),SUCDi,0.0,1000.0
+Succinyl-CoA synthetase (ADP-forming),SUCOAS,-8.045933578706272,2.3922319887925528e-15
+Transaldolase,TALA,-0.15453620107026575,7.905223476869291
+NAD(P) transhydrogenase,THD2,0.0,37.041988708431425
+Transketolase,TKT1,-0.15453620107026583,7.9052234768693825
+Transketolase,TKT2,-0.4663728058012102,7.621286379255246
+Triose-phosphate isomerase,TPI,1.1717056706103743,9.217639249316651
+Acetate exchange,EX_ac_e,0.0,3.8135555555555434
+Acetaldehyde exchange,EX_acald_e,0.0,2.5423703703703646
+2-Oxoglutarate exchange,EX_akg_e,0.0,1.4300833333333434
+CO2 exchange,EX_co2_e,15.206525955175897,26.52884997918446
+Ethanol exchange,EX_etoh_e,0.0,2.214322580645155
+Formate exchange,EX_for_e,0.0,11.322324024008578
+D-Fructose exchange,EX_fru_e,0.0,0.0
+Fumarate exchange,EX_fum_e,0.0,0.0
+D-Glucose exchange,EX_glc__D_e,-10.0,-9.04661111111109
+L-Glutamine exchange,EX_gln__L_e,0.0,0.0
+L-Glutamate exchange,EX_glu__L_e,0.0,1.2711851851851803
+H+ exchange,EX_h_e,15.7777788868081,27.100102910816407
+H2O exchange,EX_h2o_e,20.93592039800065,32.25824442200987
+D-lactate exchange,EX_lac__D_e,0.0,2.145124999999994
+L-Malate exchange,EX_mal__L_e,0.0,0.0
+Ammonia exchange,EX_nh4_e,-5.559972459062893,-4.2887872738777135
+O2 exchange,EX_o2_e,-25.619543390398942,-17.992432279287744
+Phosphate exchange,EX_pi_e,-3.214895047684765,-2.8934055429162973
+Pyruvate exchange,EX_pyr_e,0.0,2.542370370370364
+Succinate exchange,EX_succ_e,0.0,1.6742439024390143
+Fructose-bisphosphate aldolase,FBA,1.171705670610375,9.217639249316653
+Fructose-bisphosphatase,FBP,0.0,17.16099999999996
+Formate transport in via proton symport,FORt2,0.0,68.64399999999992
+Formate transport via diffusion,FORt,-68.64399999999988,0.0
+Fumarate reductase,FRD7,0.0,1000.0
+Fructose transport via PEP:Pyr PTS (f6p generating),FRUpts2,0.0,0.0
+Fumarase,FUM,-0.5129141697365467,8.045933578707317
+Fumarate transport via proton symport (2 H),FUMt2_2,0.0,0.0
+Glucose 6-phosphate dehydrogenase,G6PDH2r,0.0,24.137800736118443
+Glyceraldehyde-3-phosphate dehydrogenase,GAPD,9.863235433516975,17.909169012223405
+D-glucose transport via PEP:Pyr PTS,GLCpts,9.046611111111119,10.000000000000002
+Glutamine synthetase,GLNS,0.20111555639864498,17.362115556398585
+L-glutamine transport via ABC system,GLNabc,0.0,0.0
+Glutamate dehydrogenase (NADP),GLUDy,-5.358856902664248,13.07332828252084
+Glutaminase,GLUN,0.0,17.160999999999916
+Glutamate synthase (NADPH),GLUSy,0.0,17.160999999999916
+L glutamate transport via proton symport  reversible,GLUt2r,-1.2711851851851814,0.0
+Phosphogluconate dehydrogenase,GND,0.0,24.137800736120017
+H2O transport via diffusion,H2Ot,-32.25824442200923,-20.93592039800064
+Isocitrate dehydrogenase (NADP),ICDHyr,0.8485865224814111,8.894520101187886
+Isocitrate lyase,ICL,0.0,8.045933578706201
+D-lactate dehydrogenase,LDH_D,-2.1451249999999913,0.0
+Malate synthase,MALS,0.0,8.04593357870628
+Malate transport via proton symport (2 H),MALt2_2,0.0,0.0
+Malate dehydrogenase,MDH,-3.249741189935681,16.09186715741256
+Malic enzyme (NAD),ME1,0.0,11.935888812258286
+Malic enzyme (NADP),ME2,0.0,15.318641557994745
+NADH dehydrogenase (ubiquinone-8 & 3 protons),NADH16,32.659149438235175,51.239086780797344
+NAD transhydrogenase,NADTRHD,0.0,44.759583045968434
+Ammonia reversible transport,NH4t,4.2887872738777135,5.5599724590628465
+O2 transport  diffusion,O2t,17.9924322792878,25.61954339039892
+Pyruvate dehydrogenase,PDH,0.0,19.888208401328626

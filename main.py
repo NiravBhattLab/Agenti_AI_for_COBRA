@@ -1,23 +1,32 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+import os
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from tools import set_model_objective
+from tools import set_model_objective, set_model_manager, set_session_dir
 from llm_factory import get_llm
 from pydantic import BaseModel
 from agent import agent_query, setup_agent
 from models import ModelManager
 from pathlib import Path
-from tools import set_model_manager
+import shutil
 import pandas as pd
 import os
 import re
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
-os.makedirs("outputs", exist_ok=True)
-os.makedirs("/outputs/flux_sampling/", exist_ok=True)
-os.makedirs("/outputs/knockouts/", exist_ok=True)
-os.makedirs("/outputs/fva/", exist_ok=True)
+
+SESSION_DIR: Path | None = None
+
+def _make_session_dir(name: str) -> Path:
+    safe = re.sub(r'[<>:"/\\|?*\s]+', '_', name).strip('_') or "session"
+    session = Path("outputs") / safe
+    session.mkdir(parents=True, exist_ok=True)
+    (session / "fva").mkdir(exist_ok=True)
+    (session / "knockouts").mkdir(exist_ok=True)
+    (session / "flux_sampling").mkdir(exist_ok=True)
+    return session
+
 model_manager = ModelManager()
 set_model_manager(model_manager)
 
@@ -180,11 +189,50 @@ def set_sampler(req: dict):
         raise HTTPException(status_code=500, detail=f"Failed to set Sampler: {e}")
 
 
+class CreateSessionRequest(BaseModel):
+    session_name: str
+
+@app.post("/create_session/")
+def create_session(req: CreateSessionRequest):
+    global SESSION_DIR
+    if not req.session_name.strip():
+        raise HTTPException(status_code=400, detail="Session name cannot be empty.")
+    SESSION_DIR = _make_session_dir(req.session_name.strip())
+    set_session_dir(SESSION_DIR)
+    return {"status": "created", "session_name": SESSION_DIR.name, "session_dir": str(SESSION_DIR)}
+
+@app.get("/session_info/")
+def session_info():
+    if SESSION_DIR is None:
+        return {"session_dir": None, "session_name": None}
+    return {"session_dir": str(SESSION_DIR), "session_name": SESSION_DIR.name}
+
+class EndSessionRequest(BaseModel):
+    keep: bool = True
+
+@app.post("/end_session/")
+def end_session(req: EndSessionRequest):
+    if SESSION_DIR is None:
+        return {"status": "no_session"}
+    if not req.keep and SESSION_DIR.exists():
+        shutil.rmtree(SESSION_DIR)
+        return {"status": "deleted", "session_name": SESSION_DIR.name}
+    return {"status": "kept", "session_dir": str(SESSION_DIR)}
+
+@app.post("/shutdown/")
+def shutdown(background_tasks: BackgroundTasks):
+    def _quit():
+        import time
+        time.sleep(0.3)
+        os._exit(0)
+    background_tasks.add_task(_quit)
+    return {"status": "shutting_down"}
+
 @app.post("/chat/")
 async def chat(req: ChatRequest):
     try:
         response = agent_query(req.message)
-        return {"response": response}
+        return {"response": response, "model_id": model_manager.current_model_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

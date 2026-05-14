@@ -19,21 +19,23 @@ class ModelManager:
         return True
 
     def load_model_by_id(self, model_id):
+        for prefix in ("BIGG:", "BiGG:", "bigg:", "BioModels:", "biomodels:"):
+            if model_id.startswith(prefix):
+                model_id = model_id[len(prefix):]
+                break
         if "xml" not in model_id:
             model_id = f"{model_id}.xml"
         base_model_id = model_id.split(".")[0]
 
-        try:
-            repositories = [BioModels(), BiGGModels()]
-            model = load_model(base_model_id, repositories=repositories)
-            if model:
-                self.models[base_model_id] = model
-                self.current_model_id = base_model_id
-                if model.objective:
-                    self.objective = True
-                return base_model_id
-        except Exception as e:
-            return {"response": f"Error loading from remote repositories: {e}"}
+        repositories = [BioModels(), BiGGModels()]
+        model = load_model(base_model_id, repositories=repositories)
+        if not model:
+            raise ValueError(f"Model '{base_model_id}' was not found in BioModels or BiGG repositories.")
+        self.models[base_model_id] = model
+        self.current_model_id = base_model_id
+        if model.objective:
+            self.objective = True
+        return base_model_id
 
     def load_sbml(self, file_path):
         model_id = str(file_path).split("/")[-1].split(".")[0]

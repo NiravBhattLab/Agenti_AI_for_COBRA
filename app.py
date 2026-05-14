@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import os
 
 API_BASE = "http://localhost:8000"
 
@@ -37,6 +38,30 @@ if "disclaimer" not in st.session_state:
     st.session_state.disclaimer = False
 if "llm" not in st.session_state:
     st.session_state.llm = False
+if "session_ready" not in st.session_state:
+    st.session_state.session_ready = False
+if "session_name" not in st.session_state:
+    st.session_state.session_name = None
+
+@st.dialog("🗂️ Name Your Session")
+def name_session_dialog():
+    st.markdown("Give this session a descriptive name. All artifacts (FVA, knockouts, sampling) will be saved in a folder with this name under `outputs/`.")
+    name = st.text_input("Session name", placeholder="e.g., ecoli_growth_analysis")
+    if st.button("Start Session", type="primary", use_container_width=True):
+        if not name.strip():
+            st.error("Please enter a session name.")
+        else:
+            try:
+                res = requests.post(f"{API_BASE}/create_session/", json={"session_name": name.strip()})
+                if res.status_code == 200:
+                    data = res.json()
+                    st.session_state.session_name = data["session_name"]
+                    st.session_state.session_ready = True
+                    st.rerun()
+                else:
+                    st.error(f"Failed to create session: {res.json().get('detail', 'Unknown error')}")
+            except Exception as e:
+                st.error(f"Could not reach backend: {e}")
 
 @st.dialog("DISCLAIMER!")
 def popup():
@@ -78,6 +103,36 @@ def llm_configuration_dialog():
                 st.rerun()
             else:
                 st.error(f"Failed to switch LLM: {res.json().get('detail')}")
+
+@st.dialog("⏹ End Session", width="large")
+def end_session_dialog():
+    st.markdown(f"**Current session:** `{st.session_state.session_name}`")
+    st.markdown("Choose what to do with the artifacts (FVA results, knockouts, sampling CSVs) generated in this session.")
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Save Artifacts", use_container_width=True, type="primary"):
+            try:
+                res = requests.post(f"{API_BASE}/end_session/", json={"keep": True})
+                if res.status_code == 200:
+                    st.success(f"Artifacts saved in `outputs/{st.session_state.session_name}`.")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    with col2:
+        if st.button("🗑️ Delete Artifacts", use_container_width=True):
+            try:
+                res = requests.post(f"{API_BASE}/end_session/", json={"keep": False})
+                if res.status_code == 200:
+                    st.success("Session artifacts deleted.")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    st.divider()
+    if st.button("🛑 Quit Application", use_container_width=True):
+        try:
+            requests.post(f"{API_BASE}/shutdown/", timeout=2)
+        except Exception:
+            pass
+        os._exit(0)
 
 @st.dialog("📁 Model Management", width="large")
 def model_management_dialog():
@@ -151,19 +206,23 @@ def model_management_dialog():
                 st.error(f"Failed to set sampler: {e}")
 
 
-if not st.session_state.disclaimer:
+if not st.session_state.session_ready:
+    name_session_dialog()
+elif not st.session_state.disclaimer:
     popup()
 else:
-    col1, col2, col3 = st.columns([94,3,3])
-    with col1: 
+    col1, col2, col3, col4 = st.columns([91, 3, 3, 3])
+    with col1:
         st.header("💬 Agentic Chat")
-    with col2: 
+    with col2:
         if st.button("📁", help="Open Model Management", use_container_width=True): model_management_dialog()
-    with col3: 
+    with col3:
         if st.button("🧠", help="Open LLM Configuration", use_container_width=True): llm_configuration_dialog()
+    with col4:
+        if st.button("⏹", help="End Session", use_container_width=True): end_session_dialog()
 
     if st.session_state.llm:
-        sub = f"Provider: {st.session_state.get('llm_provider','?')} | Model: {st.session_state.get('llm_model','?')}"
+        sub = f"Provider: {st.session_state.get('llm_provider','?')} | Model: {st.session_state.get('llm_model','?')} | Session: {st.session_state.get('session_name','?')}"
         st.caption(sub)
         chat_container = st.container()
         user_input = st.chat_input("Ask about the model...")
@@ -173,7 +232,10 @@ else:
             try:
                 res = requests.post(f"{API_BASE}/chat/", json={"message": user_input})
                 if res.status_code == 200:
-                    response_text = res.json()["response"]  # ["raw"]["message"]["content"] # Here if OpenAI then chnage accordingly
+                    data = res.json()
+                    response_text = data["response"]
+                    if data.get("model_id"):
+                        st.session_state.model_id = data["model_id"]
                     st.session_state.chat_history.append(("agent", response_text))
                 else:
                     error_msg = res.json().get("detail", "Unknown error")
