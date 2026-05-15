@@ -88,7 +88,7 @@ def llm_configuration_dialog():
         api_key = st.text_input("Enter API Key", type="password")
 
     if st.button("Apply LLM"):
-        if provider not in ['groq', 'openai', 'Hugging Face'] or not api_key:
+        if provider in ['groq', 'openai', 'Hugging Face'] and not api_key:
             st.error("API Key is required for Groq, OpenAI and Hugging Face providers.")
         else:
             payload = {"provider": provider, "model": model}
@@ -225,12 +225,32 @@ else:
         sub = f"Provider: {st.session_state.get('llm_provider','?')} | Model: {st.session_state.get('llm_model','?')} | Session: {st.session_state.get('session_name','?')}"
         st.caption(sub)
         chat_container = st.container()
-        user_input = st.chat_input("Ask about the model...")
 
-        if user_input:
-            st.session_state.chat_history.append(("user", user_input))
+        with chat_container:
+            for role, msg in st.session_state.chat_history:
+                if role == "user":
+                    st.chat_message("user").write(msg)
+                else:
+                    st.chat_message("assistant").write(msg)
+
+        if "chat_input_key" not in st.session_state:
+            st.session_state.chat_input_key = 0
+
+        col_input, col_btn = st.columns([9, 1])
+        with col_input:
+            user_input = st.text_input(
+                "Message",
+                key=f"chat_input_{st.session_state.chat_input_key}",
+                placeholder="Ask about the model...",
+                label_visibility="collapsed",
+            )
+        with col_btn:
+            send_clicked = st.button("Send", use_container_width=True)
+
+        if send_clicked and user_input.strip():
+            st.session_state.chat_history.append(("user", user_input.strip()))
             try:
-                res = requests.post(f"{API_BASE}/chat/", json={"message": user_input})
+                res = requests.post(f"{API_BASE}/chat/", json={"message": user_input.strip()})
                 if res.status_code == 200:
                     data = res.json()
                     response_text = data["response"]
@@ -242,13 +262,8 @@ else:
                     st.session_state.chat_history.append(("agent", f"⚠️ Error: {error_msg}"))
             except Exception as e:
                 st.session_state.chat_history.append(("agent", f"⚠️ Exception: {str(e)}"))
-
-        with chat_container:
-            for role, msg in st.session_state.chat_history:
-                if role == "user":
-                    st.chat_message("user").write(msg)
-                else:
-                    st.chat_message("assistant").write(msg)
+            st.session_state.chat_input_key += 1
+            st.rerun()
     else:
         st.warning("Please configure the LLM in the sidebar to start chatting.")
         st.info("Supported providers: groq, ollama, openai, Hugging Face")

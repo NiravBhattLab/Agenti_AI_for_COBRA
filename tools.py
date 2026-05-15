@@ -439,7 +439,7 @@ check_load_model_tool = FunctionTool.from_defaults(
 )
 current_model_tool = FunctionTool.from_defaults(
     fn=get_current_model_id,
-    name="get_cuurrent_model_id",
+    name="get_current_model_id",
     description="""Returns the current model ID from the ModelManager.""",
     return_direct=return_direct
 )

@@ -17,7 +17,7 @@ agent = None
 memory = Memory.from_defaults(session_id="metabolic_agent", token_limit=40000) # For future integration
 
 all_tools = [
-    load_model_tool, model_data_tool, model_info_tool, # current_model_tool, check_load_model_tool,
+    load_model_tool, model_data_tool, model_info_tool, current_model_tool, check_load_model_tool,
     reaction_info_tool, metabolite_info_tool, gene_info_tool,
     run_fba_tool, set_objective_tool, run_fva_tool,
     gene_knockout_tool, reaction_knockout_tool, flux_sampler_tool

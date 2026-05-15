@@ -231,7 +231,11 @@ def shutdown(background_tasks: BackgroundTasks):
 @app.post("/chat/")
 async def chat(req: ChatRequest):
     try:
-        response = agent_query(req.message)
+        if model_manager.current_model_id:
+            message = f"[Current model: {model_manager.current_model_id}] {req.message}"
+        else:
+            message = req.message
+        response = agent_query(message)
         return {"response": response, "model_id": model_manager.current_model_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
