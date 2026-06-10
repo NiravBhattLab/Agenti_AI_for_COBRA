@@ -1,0 +1,2301 @@
+cobra.core package
+******************
+
+
+Submodules
+==========
+
+
+cobra.core.configuration module
+===============================
+
+Provide a global configuration object.
+
+class cobra.core.configuration.Configuration(*args, **kwargs)
+
+   Bases: "object"
+
+   Define a global configuration object.
+
+   The attributes of this singleton object are used as default values
+   by cobra functions.
+
+   solver
+
+      The default solver for new models. The solver choices are the
+      ones provided by *optlang* and depend on solvers installed in
+      your environment.
+
+      Type:
+         {"glpk", "cplex", "gurobi", "glpk_exact"}
+
+   tolerance
+
+      The default tolerance for the solver being used (default 1E-07).
+
+      Type:
+         float, optional
+
+   lower_bound
+
+      The standard lower bound for reversible reactions (default
+      -1000).
+
+      Type:
+         float, optional
+
+   upper_bound
+
+      The standard upper bound for all reactions (default 1000).
+
+      Type:
+         float, optional
+
+   bounds
+
+      The default reaction bounds for newly created reactions. The
+      bounds are in the form of lower_bound, upper_bound (default
+      -1000.0, 1000.0).
+
+      Type:
+         tuple of floats
+
+   processes
+
+      A default number of processes to use where multiprocessing is
+      possible. The default number corresponds to the number of
+      available cores (hyperthreads) minus one.
+
+      Type:
+         int > 0
+
+   cache_directory
+
+      A path where the model cache should reside if caching is
+      desired. The default directory depends on the operating system.
+
+      Type:
+         pathlib.Path or str, optional
+
+   max_cache_size
+
+      The allowed maximum size of the model cache in bytes (default 1
+      GB).
+
+      Type:
+         int, optional
+
+   cache_expiration
+
+      The expiration time in seconds for the model cache if any
+      (default None).
+
+      Type:
+         int, optional
+
+   property bounds: Tuple[Number | None, Number | None]
+
+      Return the lower, upper reaction bound pair.
+
+      Returns:
+         The lower and upper bounds for new reactions.
+
+      Return type:
+         tuple of number and number or None and None
+
+   property cache_directory: Path
+
+      Return the model cache directory.
+
+   property solver: ModuleType
+
+      Return the optlang solver interface.
+
+
+cobra.core.dictlist module
+==========================
+
+Define the DictList class.
+
+class cobra.core.dictlist.DictList(*args)
+
+   Bases: "List"["CobraObject"]
+
+   Define a combined dict and list.
+
+   This object behaves like a list, but has the O(1) speed benefits of
+   a dict when looking up elements by their id.
+
+   add(x: CobraObject) -> None
+
+      Opposite of *remove*. Mirrors set.add.
+
+   append(entity: CobraObject) -> None
+
+      Append object to end.
+
+   extend(iterable: Iterable[CobraObject]) -> None
+
+      Extend list by appending elements from the iterable.
+
+      Sometimes during initialization from an older pickle, _dict will
+      not have initialized yet, because the initialization class was
+      left unspecified. This is an issue because unpickling calls
+      DictList.extend, which requires the presence of _dict.
+      Therefore, the issue is caught and addressed here.
+
+      Parameters:
+         **iterable** (*Iterable*)
+
+   get_by_any(iterable: List[str | CobraObject | int]) -> List[CobraObject]
+
+      Get a list of members using several different ways of indexing.
+
+      Parameters:
+         **iterable** (*list** (**if not**, **turned into single
+         element list**)*) -- list where each element is either int
+         (referring to an index in in this DictList), string (a id of
+         a member in this DictList) or member of this DictList for
+         pass-through
+
+      Returns:
+         a list of members
+
+      Return type:
+         list
+
+   get_by_id(id: CobraObject | str) -> CobraObject
+
+      Return the element with a matching id.
+
+   has_id(id: CobraObject | str) -> bool
+
+      Check if id is in DictList.
+
+   index(id: str | CobraObject, *args) -> int
+
+      Determine the position in the list.
+
+      Parameters:
+         **id** (A string or a "Object")
+
+   insert(index: int, entity: CobraObject) -> None
+
+      Insert entity before index.
+
+   list_attr(attribute: str) -> list
+
+      Return a list of the given attribute for every object.
+
+   pop(*args) -> CobraObject
+
+      Remove and return item at index (default last).
+
+   query(search_function: str | Pattern | Callable, attribute: str | None = None) -> DictList[CobraObject]
+
+      Query the list.
+
+      Parameters:
+         * **search_function** (*a string**, **regular expression** or
+           **function*) -- Used to find the matching elements in the
+           list. - a regular expression (possibly compiled), in which
+           case the given attribute of the object should match the
+           regular expression. - a function which takes one argument
+           and returns True for desired values
+
+         * **attribute** (*string** or **None*) -- the name attribute
+           of the object to passed as argument to the
+           *search_function*. If this is None, the object itself is
+           used.
+
+      Returns:
+         a new list of objects which match the query
+
+      Return type:
+         DictList
+
+      -[ Examples ]-
+
+      >>> from cobra.io import load_model
+      >>> model = load_model('textbook')
+      >>> model.reactions.query(lambda x: x.boundary)
+      >>> import re
+      >>> regex = re.compile('^g', flags=re.IGNORECASE)
+      >>> model.metabolites.query(regex, attribute='name')
+
+   remove(x: str | CobraObject) -> None
+
+      Warning:
+
+        Internal use only.
+
+      Each item is unique in the list which allows this It is much
+      faster to do a dict lookup than n string comparisons
+
+   reverse() -> None
+
+      Reverse *IN PLACE*.
+
+   sort(cmp: Callable = None, key: Callable = None, reverse: bool = False) -> None
+
+      Stable sort *IN PLACE*.
+
+      cmp(x, y) -> -1, 0, 1
+
+   union(iterable: Iterable[CobraObject]) -> None
+
+      Add elements with id's not already in the model.
+
+
+cobra.core.formula module
+=========================
+
+Provide a class representing a chemical formula.
+
+class cobra.core.formula.Formula(formula: str | None = None, **kwargs)
+
+   Bases: "Object"
+
+   Describe a chemical formula.
+
+   Parameters:
+      **formula** (*string*) -- A legal formula string contains only
+      letters and numbers.
+
+   parse_composition() -> None
+
+      Break the chemical formula down by element.
+
+   property weight: float
+
+      Calculate the mol mass of the compound.
+
+      Returns:
+         the mol mass
+
+      Return type:
+         float
+
+
+cobra.core.gene module
+======================
+
+Provide functions for dealing with genes and gene product rules (GPR).
+
+class cobra.core.gene.GPR(gpr_from: Expression | Module | AST = None, **kwargs)
+
+   Bases: "Module"
+
+   A Gene Reaction rule in a cobra model, using AST as base class.
+
+   Parameters:
+      **gpr_from** (*Expression** or **Module** or **AST*) -- A GPR in
+      AST format
+
+   as_symbolic(names: dict = None) -> Or | And | Symbol
+
+      Convert compiled ast to sympy expression.
+
+      Parameters:
+         * **self** (*GPR*) -- compiled ast Module describing GPR
+
+         * **names** (*dict*) -- dictionary of gene ids to gene names.
+           If this is empty, returns sympy expression using gene ids
+
+      Returns:
+         SYMPY expression (Symbol or And or Or). Symbol("") if the GPR
+         is empty
+
+      Return type:
+         Symbol or BooleanFunction
+
+      -[ Notes ]-
+
+      Calls _symbolic_gpr()
+
+   copy() -> GPR
+
+      Copy a GPR.
+
+   eval(knockouts: DictList | Set | str | Iterable = None) -> bool
+
+      Evaluate compiled ast of gene_reaction_rule with knockouts.
+
+      This function calls _eval_gpr, but allows more flexibility in
+      input, including name, and list.
+
+      Parameters:
+         **knockouts** -- Which gene or genes to knoc out
+
+      Returns:
+         True if the gene reaction rule is true with the given
+         knockouts otherwise false
+
+      Return type:
+         bool
+
+   classmethod from_string(string_gpr: str) -> GPR
+
+      Construct a GPR from a string.
+
+      Parameters:
+         **string_gpr** (*str*) -- a string that describes the gene
+         rules, in a format like A & B
+
+      Returns:
+         returns a new GPR while setting  self.body as Parsed AST tree
+         that has the gene rules This function also sets self._genes
+         with the gene ids in the AST
+
+      Return type:
+         GPR
+
+   classmethod from_symbolic(sympy_gpr: BooleanFunction | Symbol) -> GPR
+
+      Construct a GPR from a sympy expression.
+
+      Parameters:
+         **sympy_gpr** (*sympy*) -- a sympy that describes the gene
+         rules, being a Symbol for single genes or a BooleanFunction
+         for AND/OR relationships
+
+      Returns:
+         returns a new GPR while setting  self.body as Parsed AST tree
+         that has the gene rules This function also sets self._genes
+         with the gene ids in the AST
+
+      Return type:
+         GPR
+
+   property genes: FrozenSet
+
+      To check the genes.
+
+      This property updates the genes before returning them, in case
+      the GPR was changed and the genes weren't.
+
+      Returns:
+         **genes** -- All the genes in a frozen set. Do not try to
+         change them with this property.
+
+      Return type:
+         frozenset
+
+   to_string(names: dict = None) -> str
+
+      Convert compiled ast to gene_reaction_rule str.
+
+      Parameters:
+         * **self** (*GPR*) -- compiled ast Module describing GPR
+
+         * **names** (*dict*) -- dictionary of gene ids to gene names.
+           If this is empty, returns gene ids
+
+      Returns:
+         The gene reaction rule
+
+      Return type:
+         string
+
+      -[ Notes ]-
+
+      Calls _aststr()
+
+   update_genes() -> None
+
+      Update genes, used after changes in GPR.
+
+      Walks along the AST tree of the GPR class, and modifies
+      self._genes
+
+class cobra.core.gene.GPRCleaner(**kwargs)
+
+   Bases: "NodeTransformer"
+
+   Parses compiled ast of a gene_reaction_rule and identifies genes.
+
+   Parts of the tree are rewritten to allow periods in gene ID's and
+   bitwise boolean operations
+
+   visit_BinOp(node: BoolOp) -> None
+
+      Visit a BoolOp node (AND/OR) and visit the children (genes) to
+      process them.
+
+      Parameters:
+         **node** (*ast.BoolOp*) -- The node to visit. Nodes other
+         than And() and Or() will cause an error.
+
+      Returns:
+         **node** -- The node with the children transformed.
+
+      Return type:
+         ast.BoolOp
+
+   visit_Name(node: Name) -> Name
+
+      Visit a Gene node and add the id to the gene_set.
+
+      The gene id will be cleaned used __cobra_escape__ and
+      replacements dictionary (see above).
+
+      Parameters:
+         **node** (*ast.Name*) -- The node to visit
+
+      Returns:
+         **node** -- The transformed node (with the id changed).
+
+      Return type:
+         ast.Name
+
+class cobra.core.gene.GPRWalker(**kwargs)
+
+   Bases: "NodeVisitor"
+
+   Identifies genes in an AST/GPR tree.
+
+   Walks over the tree, and identifies the id of each Name node
+
+   visit_BoolOp(node: BoolOp) -> None
+
+      Visit a BoolOp node (AND/OR) and visit the children to add them
+      to gene_set.
+
+      Parameters:
+         **node** (*ast.BoolOp*) -- The node to visit
+
+   visit_Name(node: Name) -> None
+
+      Visit a Gene node and add the id to the gene_set.
+
+      Parameters:
+         **node** (*ast.Name*) -- The node to visit
+
+class cobra.core.gene.Gene(id: str = None, name: str = '', functional: bool = True)
+
+   Bases: "Species"
+
+   A Gene in a cobra model.
+
+   Parameters:
+      * **id** (*string*) -- The identifier to associate the gene with
+
+      * **name** (*string*) -- A longer human readable name for the
+        gene
+
+      * **functional** (*bool*) -- Indicates whether the gene is
+        functional.  If it is not functional then it cannot be used in
+        an enzyme complex nor can its products be used.
+
+   property functional: bool
+
+      Flag indicating if the gene is functional.
+
+      Changing the flag is reverted upon exit if executed within the
+      model as context.
+
+   knock_out() -> None
+
+      Knockout gene by marking it as non-functional.
+
+      Knockout gene by marking it as non-functional and setting all
+      associated reactions bounds to zero. The change is reverted upon
+      exit if executed within the model as context.
+
+cobra.core.gene.ast2str(expr: Expression | GPR, level: int = 0, names: dict = None) -> str
+
+   Convert compiled ast to gene_reaction_rule str.
+
+   Parameters:
+      * **expr** (*AST** or **GPR*) -- AST or GPR
+
+      * **level** (*int*) -- internal use only. Ignored because of
+        GPR() class, kept only for interface consistency with code
+        still using ast2str.
+
+      * **names** (*dict*) -- Dict where each element id a gene
+        identifier and the value is the gene name. Use this to get a
+        rule str which uses names instead. This should be done for
+        display purposes only. All gene_reaction_rule strings which
+        are computed with should use the id.
+
+   Returns:
+      * *string* -- The gene reaction rule
+
+      * *.. deprecated ::*
+
+      * *Use GPR.to_string(names=) in the future. Because of the GPR()
+        class,*
+
+      * *this function will be removed.*
+
+cobra.core.gene.eval_gpr(expr: Expression | GPR, knockouts: DictList | set) -> bool
+
+   Evaluate compiled ast of gene_reaction_rule with knockouts.
+
+   Use GPR().eval() in the future. Because of the GPR() class, this
+   function will be removed.
+
+   Parameters:
+      * **expr** (*Expression** or **GPR*) -- The ast of the gene
+        reaction rule
+
+      * **knockouts** (*DictList**, **set*) -- Set of genes that are
+        knocked out
+
+   Returns:
+      True if the gene reaction rule is true with the given knockouts
+      otherwise false
+
+   Return type:
+      bool
+
+cobra.core.gene.parse_gpr(str_expr: str) -> Tuple
+
+   Parse GPR into AST.
+
+   Parameters:
+      **str_expr** (*string*) -- string with the gene reaction rule to
+      parse
+
+   Returns:
+      * *tuple* -- elements ast_tree and gene_ids as a set
+
+      * *.. deprecated ::*
+
+      * *Use GPR(string_gpr=str_expr) in the future. Because of the
+        GPR() class,*
+
+      * *this function will be removed.*
+
+
+cobra.core.group module
+=======================
+
+Define the group class.
+
+class cobra.core.group.Group(id: str, name: str = '', members: Iterable | None = None, kind: str | None = None)
+
+   Bases: "Object"
+
+   Manage groups via this implementation of the SBML group
+   specification.
+
+   *Group* is a class for holding information regarding a pathways,
+   subsystems, or other custom groupings of objects within a
+   cobra.Model object.
+
+   Parameters:
+      * **id** (*str*) -- The identifier to associate with this group
+
+      * **name** (*str**, **optional*) -- A human readable name for
+        the group
+
+      * **members** (*iterable**, **optional*) -- A DictList
+        containing references to cobra.Model-associated objects that
+        belong to the group.
+
+      * **kind** (*{"collection"**, **"classification"**,
+        **"partonomy"}**, **optional*) -- The kind of group, as
+        specified for the Groups feature in the SBML level 3 package
+        specification. Can be any of "classification", "partonomy", or
+        "collection". The default is "collection". Please consult the
+        SBML level 3 package specification to ensure you are using the
+        proper value for kind. In short, members of a "classification"
+        group should have an "is-a" relationship to the group (e.g.
+        member is-a polar compound, or member is-a transporter).
+        Members of a "partonomy" group should have a "part-of"
+        relationship (e.g. member is part-of glycolysis). Members of a
+        "collection" group do not have an implied relationship between
+        the members, so use this value for kind when in doubt (e.g.
+        member is a gap-filled reaction, or member is involved in a
+        disease phenotype).
+
+   KIND_TYPES = ('collection', 'classification', 'partonomy')
+
+   add_members(new_members: list) -> None
+
+      Add objects to the group.
+
+      Parameters:
+         **new_members** (*list*) -- A list of cobrapy objects to add
+         to the group.
+
+   property kind: str
+
+      Return the group kind.
+
+      Returns:
+         The group kind. Should be one of the three types allowed in
+         SBML.
+
+      Return type:
+         str
+
+   property members: Set
+
+      Get members of the group.
+
+      Returns:
+         A Set containing the members of the group.
+
+      Return type:
+         Set
+
+   remove_members(to_remove: list) -> None
+
+      Remove objects from the group.
+
+      Parameters:
+         **to_remove** (*list*) -- A list of cobra objects to remove
+         from the group
+
+
+cobra.core.metabolite module
+============================
+
+Define the Metabolite class.
+
+class cobra.core.metabolite.Metabolite(id: str | None = None, formula: str | None = None, name: str | None = '', charge: float | None = None, compartment: str | None = None)
+
+   Bases: "Species"
+
+   Class for information about metabolite in cobra.Reaction.
+
+   Metabolite is a class for holding information regarding a
+   metabolite in a cobra.Reaction object.
+
+   Parameters:
+      * **id** (*str*) -- the identifier to associate with the
+        metabolite
+
+      * **formula** (*str*) -- Chemical formula (e.g. H2O)
+
+      * **name** (*str*) -- A human readable name.
+
+      * **charge** (*float*) -- The charge number of the metabolite
+
+      * **compartment** (*str** or **None*) -- Compartment of the
+        metabolite.
+
+   property constraint: Container
+
+      Get the constraints associated with this metabolite from the
+      solver.
+
+      Returns:
+         the optlang constraint for this metabolite
+
+      Return type:
+         optlang.<interface>.Containter
+
+   property elements: Dict[str, int | float] | None
+
+      Get dicitonary of elements and counts.
+
+      Dictionary of elements as keys and their count in the metabolite
+      as integer. When set, the *formula* property is updated
+      accordingly.
+
+      Returns:
+         **composition** -- A dictionary of elements and counts, where
+         count is int unless it is needed to be a float. Returns None
+         in case of error.
+
+      Return type:
+         None or Dict
+
+   property formula_weight: int | float
+
+      Calculate the formula weight.
+
+      Returns:
+         Weight of formula, based on the weight and count of elements.
+         Can be int if the formula weight is a whole number, but
+         unlikely.
+
+      Return type:
+         float, int
+
+   remove_from_model(destructive: bool = False) -> None
+
+      Remove the association from self.model.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         **destructive** (*bool**, **default False*) -- If False then
+         the metabolite is removed from all associated reactions.  If
+         True then all associated reactions are removed from the
+         Model.
+
+   property shadow_price: float
+
+      Return the shadow price for the metabolite in the most recent
+      solution.
+
+      Shadow price is the dual value of the corresponding constraint
+      in the model.
+
+      Returns:
+         **shadow_price**
+
+      Return type:
+         float
+
+      Warning:
+
+        * Accessing shadow prices through a *Solution* object is the
+          safer, preferred, and only guaranteed to be correct way. You
+          can see how to do so easily in the examples.
+
+        * Shadow price is retrieved from the currently defined
+          *self._model.solver*. The solver status is checked but there
+          are no guarantees that the current solver state is the one
+          you are looking for.
+
+        * If you modify the underlying model after an optimization,
+          you will retrieve the old optimization values.
+
+      Raises:
+         * **RuntimeError** -- If the underlying model was never
+           optimized beforehand or the     metabolite is not part of a
+           model.
+
+         * **OptimizationError** -- If the solver status is anything
+           other than 'optimal'.
+
+      -[ Examples ]-
+
+      >>> from cobra.io import load_model
+      >>> model = load_model("textbook")
+      >>> solution = model.optimize()
+      >>> model.metabolites.glc__D_e.shadow_price
+      -0.09166474637510488
+      >>> solution.shadow_prices.glc__D_e
+      -0.091664746375104883
+
+   summary(solution: Solution | None = None, fva: float | DataFrame | None = None) -> MetaboliteSummary
+
+      Create a summary of the producing and consuming fluxes.
+
+      Parameters:
+         * **solution** (*cobra.Solution**, **optional*) -- A previous
+           model solution to use for generating the summary. If
+           "None", the summary method will generate a parsimonious
+           flux distribution (default None).
+
+         * **fva** (*pandas.DataFrame** or **float**, **optional*) --
+           Whether or not to include flux variability analysis in the
+           output. If given, *fva* should either be a previous FVA
+           solution matching the model or a float between 0 and 1
+           representing the fraction of the optimum objective to be
+           searched (default None).
+
+      Return type:
+         cobra.summary.MetaboliteSummary
+
+      See also: "Reaction.summary", "Model.summary"
+
+   property y: float
+
+      Return the shadow price for the metabolite in the most recent
+      solution.
+
+      Shadow prices are computed from the dual values of the bounds in
+      the solution. .. deprecated :: Use metabolite.shadow_price
+      instead.
+
+      Returns:
+         Float representing the shadow price.
+
+      Return type:
+         float
+
+
+cobra.core.model module
+=======================
+
+Define the Model class.
+
+class cobra.core.model.Model(id_or_model: str | Model | None = None, name: str | None = None)
+
+   Bases: "Object"
+
+   Class representation for a cobra model.
+
+   Parameters:
+      * **id_or_model** (*str** or **Model**, **optional*) -- String
+        to use as model id, or actual model to base new model one. If
+        string, it is used as id. If model, a new model object is
+        instantiated with the same properties as the original model
+        (default None).
+
+      * **name** (*str**, **optional*) -- Human readable string to be
+        model description (default None).
+
+   reactions
+
+      A DictList where the key is the reaction identifier and the
+      value a Reaction
+
+      Type:
+         DictList
+
+   metabolites
+
+      A DictList where the key is the metabolite identifier and the
+      value a Metabolite
+
+      Type:
+         DictList
+
+   genes
+
+      A DictList where the key is the gene identifier and the value a
+      Gene
+
+      Type:
+         DictList
+
+   groups
+
+      A DictList where the key is the group identifier and the value a
+      Group
+
+      Type:
+         DictList
+
+   add_boundary(metabolite: Metabolite, type: str = 'exchange', reaction_id: str | None = None, lb: float | None = None, ub: float | None = None, sbo_term: str | None = None) -> Reaction
+
+      Add a boundary reaction for a given metabolite.
+
+      There are three different types of pre-defined boundary
+      reactions: exchange, demand, and sink reactions. An exchange
+      reaction is a reversible, unbalanced reaction that adds to or
+      removes an extracellular metabolite from the extracellular
+      compartment. A demand reaction is an irreversible reaction that
+      consumes an intracellular metabolite. A sink is similar to an
+      exchange but specifically for intracellular metabolites, i.e., a
+      reversible reaction that adds or removes an intracellular
+      metabolite.
+
+      If you set the reaction *type* to something else, you must
+      specify the desired identifier of the created reaction along
+      with its upper and lower bound. The name will be given by the
+      metabolite name and the given *type*.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         * **metabolite** (*cobra.Metabolite*) -- Any given
+           metabolite. The compartment is not checked but you are
+           encouraged to stick to the definition of exchanges and
+           sinks.
+
+         * **type** (*{"exchange"**, **"demand"**, **"sink"}*) --
+           Using one of the pre-defined reaction types is easiest. If
+           you want to create your own kind of boundary reaction
+           choose any other string, e.g., 'my-boundary' (default
+           "exchange").
+
+         * **reaction_id** (*str**, **optional*) -- The ID of the
+           resulting reaction. This takes precedence over the auto-
+           generated identifiers but beware that it might make
+           boundary reactions harder to identify afterwards when using
+           *model.boundary* or specifically *model.exchanges* etc.
+           (default None).
+
+         * **lb** (*float**, **optional*) -- The lower bound of the
+           resulting reaction (default None).
+
+         * **ub** (*float**, **optional*) -- The upper bound of the
+           resulting reaction (default None).
+
+         * **sbo_term** (*str**, **optional*) -- A correct SBO term is
+           set for the available types. If a custom type is chosen, a
+           suitable SBO term should also be set (default None).
+
+      Returns:
+         The created boundary reaction.
+
+      Return type:
+         cobra.Reaction
+
+      -[ Examples ]-
+
+      >>> from cobra.io load_model
+      >>> model = load_model("textbook")
+      >>> demand = model.add_boundary(model.metabolites.atp_c, type="demand")
+      >>> demand.id
+      'DM_atp_c'
+      >>> demand.name
+      'ATP demand'
+      >>> demand.bounds
+      (0, 1000.0)
+      >>> demand.build_reaction_string()
+      'atp_c --> '
+
+   add_cons_vars(what: List[CONS_VARS] | Tuple[CONS_VARS], **kwargs) -> None
+
+      Add constraints and variables to the model's mathematical
+      problem.
+
+      Useful for variables and constraints that can not be expressed
+      with reactions and simple lower and upper bounds.
+
+      Additions are reversed upon exit if the model itself is used as
+      context.
+
+      Parameters:
+         * **what** (*list** or **tuple** of **optlang variables** or
+           **constraints.*) -- The variables or constraints to add to
+           the model. Must be of class *optlang.interface.Variable* or
+           *optlang.interface.Constraint*.
+
+         * ****kwargs** (*keyword arguments*) -- Passed to
+           solver.add()
+
+   add_groups(group_list: str | Group | List[Group]) -> None
+
+      Add groups to the model.
+
+      Groups with identifiers identical to a group already in the
+      model are ignored.
+
+      If any group contains members that are not in the model, these
+      members are added to the model as well. Only metabolites,
+      reactions, and genes can have groups.
+
+      Parameters:
+         **group_list** (*list** or **str** or **Group*) -- A list of
+         *cobra.Group* objects to add to the model. Can also be a
+         single group or a string representing group id. If the input
+         is not a list, a warning is raised.
+
+   add_metabolites(metabolite_list: List | Metabolite) -> None
+
+      Add new metabolites to a model.
+
+      Will add a list of metabolites to the model object and add new
+      constraints accordingly.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         **metabolite_list** (*list** or **Metabolite.*) -- A list of
+         *cobra.core.Metabolite* objects. If it isn't an iterable
+         container, the metabolite will be placed into a list.
+
+   add_reactions(reaction_list: Iterable[Reaction]) -> None
+
+      Add reactions to the model.
+
+      Reactions with identifiers identical to a reaction already in
+      the model are ignored.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         **reaction_list** (*list*) -- A list of *cobra.Reaction*
+         objects
+
+   property boundary: List[Reaction]
+
+      Boundary reactions in the model.
+
+      Reactions that either have no substrate or product.
+
+      Returns:
+         A list of reactions that either have no substrate or product
+         and only one metabolite overall.
+
+      Return type:
+         list
+
+   property compartments: Dict
+
+      Return all metabolites' compartments.
+
+      Returns:
+         A dictionary of metabolite compartments, where the keys are
+         the short version (one letter version) of the compartments,
+         and the values are the full names (if they exist).
+
+      Return type:
+         dict
+
+   property constraints: Container
+
+      Get the constraints in the cobra model.
+
+      In a cobra model, most constraints are metabolites and their
+      stoichiometries. However, for specific use cases, it may also be
+      useful to have other types of constraints. This property defines
+      all constraints currently associated with the model's problem.
+
+      Returns:
+         A container with all associated constraints.
+
+      Return type:
+         optlang.container.Container
+
+   copy() -> Model
+
+      Provide a partial 'deepcopy' of the Model.
+
+      All the Metabolite, Gene, and Reaction objects are created anew
+      but in a faster fashion than deepcopy.
+
+      Returns:
+         **cobra.Model**
+
+      Return type:
+         new model copy
+
+   property demands: List[Reaction]
+
+      Demand reactions in model.
+
+      Irreversible reactions that accumulate or consume a metabolite
+      in the inside of the model.
+
+      Returns:
+         A list of reactions that are demand reactions (reactions that
+         accumulate/consume a metabolite irreversibly).
+
+      Return type:
+         list
+
+      See also: "cobra.medium.find_boundary_types"
+
+   property exchanges: List[Reaction]
+
+      Exchange reactions in model.
+
+      Reactions that exchange mass with the exterior. Uses annotations
+      and heuristics to exclude non-exchanges such as sink reactions.
+
+      Returns:
+         A list of reactions that satisfy the conditions for exchange
+         reactions.
+
+      Return type:
+         list
+
+      See also: "cobra.medium.find_boundary_types"
+
+   get_associated_groups(element: Reaction | Gene | Metabolite) -> List[Group]
+
+      Get list of groups for element.
+
+      Returns a list of groups that an element (reaction, metabolite,
+      gene) is associated with.
+
+      Parameters:
+         **element** (*cobra.Reaction*, *cobra.Metabolite*, or
+         *cobra.Gene*)
+
+      Returns:
+         All groups that the provided object is a member of
+
+      Return type:
+         list of *cobra.Group*
+
+   property medium: Dict[str, float]
+
+      Get the constraints on the model exchanges.
+
+      *model.medium* returns a dictionary of the bounds for each of
+      the boundary reactions, in the form of *{rxn_id: bound}*, where
+      *bound* specifies the absolute value of the bound in direction
+      of metabolite creation (i.e., lower_bound for *met <--*,
+      upper_bound for *met -->*)
+
+      Returns:
+         A dictionary with rxn.id (str) as key, bound (float) as
+         value.
+
+      Return type:
+         Dict[str, float]
+
+   merge(right: Model, prefix_existing: str | None = None, inplace: bool = True, objective: str = 'left') -> Model
+
+      Merge two models to create a model with the reactions from both
+      models.
+
+      Custom constraints and variables from right models are also
+      copied to left model, however note that, constraints and
+      variables are assumed to be the same if they have the same name.
+
+      Parameters:
+         * **right** (*cobra.Model*) -- The model to add reactions
+           from
+
+         * **prefix_existing** (*string** or **optional*) -- Prefix
+           the reaction identifier in the right that already exist in
+           the left model with this string (default None).
+
+         * **inplace** (*bool*) -- Add reactions from right directly
+           to left model object. Otherwise, create a new model leaving
+           the left model untouched. When done within the model as
+           context, changes to the models are reverted upon exit
+           (default True).
+
+         * **objective** (*{"left"**, **"right"**, **"sum"}*) -- One
+           of "left", "right" or "sum" for setting the objective of
+           the resulting model to that of the corresponding model or
+           the sum of both (default "left").
+
+      Returns:
+         The merged model.
+
+      Return type:
+         cobra.Model
+
+   property objective: Objective
+
+      Get the solver objective.
+
+      With optlang, the objective is not limited to a simple linear
+      summation of individual reaction fluxes, making the return value
+      ambiguous.
+
+      Henceforth, use *cobra.util.solver.linear_reaction_coefficients*
+      to get a dictionary of reactions with their linear coefficients
+      (empty if there are none).
+
+   property objective_direction: str
+
+      Get the objective direction.
+
+      Returns:
+         Objective direction as string. Should be "max" or "min".
+
+      Return type:
+         str
+
+   optimize(objective_sense: str | None = None, raise_error: bool = False) -> Solution
+
+      Optimize the model using flux balance analysis.
+
+      Parameters:
+         * **objective_sense** (*{None**, **'maximize' 'minimize'}**,
+           **optional*) -- Whether fluxes should be maximized or
+           minimized. In case of None, the previous direction is used
+           (default None).
+
+         * **raise_error** (*bool*) --
+
+           If true, raise an OptimizationError if solver status is not
+              optimal (default False).
+
+      Return type:
+         Solution
+
+      -[ Notes ]-
+
+      Only the most commonly used parameters are presented here.
+      Additional parameters for cobra.solvers may be available and
+      specified with the appropriate keyword argument.
+
+   property problem: <module 'optlang.interface' from 'C:\\Users\\Saathvik\\anaconda3\\Lib\\site-packages\\optlang\\interface.py'>
+
+      Get the interface to the model's underlying mathematical
+      problem.
+
+      Solutions to cobra models are obtained by formulating a
+      mathematical problem and solving it. Cobrapy uses the optlang
+      package to accomplish that and with this property you can get
+      access to the problem interface directly.
+
+      Returns:
+         The problem interface that defines methods for interacting
+         with the problem and associated solver directly.
+
+      Return type:
+         optlang.interface
+
+   remove_cons_vars(what: List[CONS_VARS] | Tuple[CONS_VARS]) -> None
+
+      Remove variables and constraints from problem.
+
+      Remove variables and constraints from the model's mathematical
+      problem.
+
+      Remove variables and constraints that were added directly to the
+      model's underlying mathematical problem. Removals are reversed
+      upon exit if the model itself is used as context.
+
+      Parameters:
+         **what** (*list** or **tuple** of **optlang variables** or
+         **constraints.*) -- The variables or constraints to add to
+         the model. Must be of class *optlang.interface.Variable* or
+         *optlang.interface.Constraint*.
+
+   remove_groups(group_list: str | Group | List[Group]) -> None
+
+      Remove groups from the model.
+
+      Members of each group are not removed from the model (i.e.
+      metabolites, reactions, and genes in the group stay in the model
+      after any groups containing them are removed).
+
+      Parameters:
+         **group_list** (*list** or **str** or **Group*) --
+
+         A list of *cobra.Group* objects to remove from the model. Can
+         also be a single group or a string representing group id. If
+         the input is not a list,
+
+            a warning is raised.
+
+   remove_metabolites(metabolite_list: List | Metabolite, destructive: bool = False) -> None
+
+      Remove a list of metabolites from the the object.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         * **metabolite_list** (*list** or **Metaoblite*) -- A list of
+           *cobra.core.Metabolite* objects. If it isn't an iterable
+           container, the metabolite will be placed into a list.
+
+         * **destructive** (*bool**, **optional*) -- If False then the
+           metabolite is removed from all associated reactions.  If
+           True then all associated reactions are removed from the
+           Model (default False).
+
+   remove_reactions(reactions: str | Reaction | List[str | Reaction], remove_orphans: bool = False) -> None
+
+      Remove reactions from the model.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         * **reactions** (*list** or **reaction** or **str*) -- A list
+           with reactions (*cobra.Reaction*), or their id's, to
+           remove. Reaction will be placed in a list. Str will be
+           placed in a list and used to find the reaction in the
+           model.
+
+         * **remove_orphans** (*bool**, **optional*) -- Remove
+           orphaned genes and metabolites from the model as well
+           (default False).
+
+   repair(rebuild_index: bool = True, rebuild_relationships: bool = True) -> None
+
+      Update all indexes and pointers in a model.
+
+      Parameters:
+         * **rebuild_index** (*bool*) -- rebuild the indices kept in
+           reactions, metabolites and genes
+
+         * **rebuild_relationships** (*bool*) -- reset all
+           associations between genes, metabolites, model and then re-
+           add them.
+
+   property sinks: List[Reaction]
+
+      Sink reactions in model.
+
+      Reversible reactions that accumulate or consume a metabolite in
+      the inside of the model.
+
+      Returns:
+         A list of reactions that are demand reactions (reactions that
+         accumulate/consume a metabolite reversibly).
+
+      Return type:
+         list
+
+      See also: "cobra.medium.find_boundary_types"
+
+   slim_optimize(error_value: float | None = nan, message: str | None = None) -> float
+
+      Optimize model without creating a solution object.
+
+      Creating a full solution object implies fetching shadow prices
+      and flux values for all reactions and metabolites from the
+      solver object. This necessarily takes some time and in cases
+      where only one or two values are of interest, it is recommended
+      to instead use this function which does not create a solution
+      object returning only the value of the objective. Note however
+      that the *optimize()* function uses efficient means to fetch
+      values so if you need fluxes/shadow prices for more than say 4
+      reactions/metabolites, then the total speed increase of
+      *slim_optimize* versus *optimize* is  expected to be small or
+      even negative depending on how you fetch the values after
+      optimization.
+
+      Parameters:
+         * **error_value** (*float**, **None*) -- The value to return
+           if optimization failed due to e.g. infeasibility. If None,
+           raise *OptimizationError* if the optimization fails
+           (default float("nan")).
+
+         * **message** (*str**, **optional*) -- Error message to use
+           if the model optimization did not succeed (default None).
+
+      Returns:
+         The objective value. Returns the error value if optimization
+         failed and error_value was not None.
+
+      Return type:
+         float
+
+      Raises:
+         **OptimizationError** -- If error_value was set as None and
+         the optimization fails.
+
+   property solver: Model
+
+      Get the attached solver instance.
+
+      The associated the solver object, which manages the interaction
+      with the associated solver, e.g. glpk.
+
+      This property is useful for accessing the optimization problem
+      directly and to define additional non-metabolic constraints.
+
+      -[ Examples ]-
+
+      >>> from cobra.io import load_model
+      >>> model = load_model("textbook")
+      >>> new = model.problem.Constraint(model.objective.expression, lb=0.99)
+      >>> model.solver.add(new)
+
+   summary(solution: Solution | None = None, fva: pd.DataFrame | float | None = None) -> ModelSummary
+
+      Create a summary of the exchange fluxes of the model.
+
+      Parameters:
+         * **solution** (*cobra.Solution**, **optional*) -- A previous
+           model solution to use for generating the summary. If
+           "None", the summary method will generate a parsimonious
+           flux distribution (default None).
+
+         * **fva** (*pd.DataFrame** or **float**, **optional*) --
+           Whether or not to include flux variability analysis in the
+           output. If given, *fva* should either be a previous FVA
+           solution matching the model or a float between 0 and 1
+           representing the fraction of the optimum objective to be
+           searched (default None).
+
+      Return type:
+         cobra.ModelSummary
+
+      See also: "Reaction.summary", "Metabolite.summary"
+
+   property tolerance: float
+
+      Get the tolerance.
+
+      Returns:
+         The tolerance of the mdoel.
+
+      Return type:
+         float
+
+   property variables: Container
+
+      Get the mathematical variables in the cobra model.
+
+      In a cobra model, most variables are reactions. However, for
+      specific use cases, it may also be useful to have other types of
+      variables. This property defines all variables currently
+      associated with the model's problem.
+
+      Returns:
+         A container with all associated variables.
+
+      Return type:
+         optlang.container.Container
+
+
+cobra.core.object module
+========================
+
+Define base Object class in Cobra.
+
+class cobra.core.object.Object(id: str | None = None, name: str = '')
+
+   Bases: "object"
+
+   Defines common behavior of object in cobra.core.
+
+   property annotation: dict
+
+      Get annotation dictionary.
+
+      Returns:
+         **_annotation** -- Returns _annotation as a dictionary.
+
+      Return type:
+         dict
+
+   property id: str
+
+      Get the Object id.
+
+      Returns:
+         **id**
+
+      Return type:
+         str
+
+
+cobra.core.reaction module
+==========================
+
+Define the Reaction class.
+
+class cobra.core.reaction.Reaction(id: str | None = None, name: str = '', subsystem: str = '', lower_bound: float = 0.0, upper_bound: float | None = None, **kwargs)
+
+   Bases: "Object"
+
+   Define the cobra.Reaction class.
+
+   Reaction is a class for holding information regarding a biochemical
+   reaction in a cobra.Model object.
+
+   Reactions are by default irreversible with bounds *(0.0,
+   cobra.Configuration().upper_bound)* if no bounds are provided on
+   creation. To create an irreversible reaction use
+   *lower_bound=None*, resulting in reaction bounds of
+   *(cobra.Configuration().lower_bound,
+   cobra.Configuration().upper_bound)*.
+
+   Parameters:
+      * **id** (*str**, **optional*) -- The identifier to associate
+        with this reaction (default None).
+
+      * **name** (*str**, **optional*) -- A human readable name for
+        the reaction (default "").
+
+      * **subsystem** (*str**, **optional*) -- Subsystem where the
+        reaction is meant to occur (default "").
+
+      * **lower_bound** (*float*) -- The lower flux bound (default
+        0.0).
+
+      * **upper_bound** (*float**, **optional*) -- The upper flux
+        bound (default None).
+
+      * ****kwargs** -- Further keyword arguments are passed on to the
+        parent class.
+
+   add_metabolites(metabolites_to_add: Dict[Metabolite, float], combine: bool = True, reversibly: bool = True) -> None
+
+      Add metabolites and stoichiometric coefficients to the reaction.
+
+      If the final coefficient for a metabolite is 0 then it is
+      removed from the reaction.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         * **metabolites_to_add** (*dict*) -- Dictionary with
+           metabolite objects or metabolite identifiers as keys and
+           coefficients as values. If keys are strings (name of a
+           metabolite) the reaction must already be part of a model
+           and a metabolite with the given name must exist in the
+           model.
+
+         * **combine** (*bool*) -- Describes behavior if a metabolite
+           already exists in the reaction (default True). True causes
+           the coefficients to be added. False causes the coefficient
+           to be replaced.
+
+         * **reversibly** (*bool*) -- Whether to add the change to the
+           context to make the change reversibly or not (primarily
+           intended for internal use). Default is True.
+
+      Raises:
+         * **KeyError** -- If the metabolite string id is not in the
+           model.
+
+         * **ValueError** -- If the metabolite key in the dictionary
+           is a string, and there is no model     for the reaction.
+
+   property boundary: bool
+
+      Whether or not this reaction is an exchange reaction.
+
+      Returns:
+         **bool**
+
+      Return type:
+         *True* if the reaction has either no products or reactants.
+
+   property bounds: Tuple[float, float]
+
+      Get or the bounds.
+
+      Returns:
+         **tuple** -- A tuple of floats, representing the lower and
+         upper bound.
+
+      Return type:
+         lower_bound, upper_bound
+
+   build_reaction_from_string(reaction_str: str, verbose: bool = True, fwd_arrow: AnyStr | None = None, rev_arrow: AnyStr | None = None, reversible_arrow: AnyStr | None = None, term_split: str = '+') -> None
+
+      Build reaction from reaction equation reaction_str using parser.
+
+      Takes a string and using the specifications supplied in the
+      optional arguments infers a set of metabolites, metabolite
+      compartments and stoichiometries for the reaction.  It also
+      infers the reversibility of the reaction from the reaction
+      arrow.
+
+      Changes to the associated model are reverted upon exit when
+      using the model as a context.
+
+      Parameters:
+         * **reaction_str** (*str*) -- a string containing a reaction
+           formula (equation)
+
+         * **verbose** (*bool*) -- setting verbosity of function
+           (default True)
+
+         * **fwd_arrow** (*AnyStr**, **optional*) -- Str or bytes that
+           encode forward irreversible reaction arrows (default None).
+
+         * **rev_arrow** (*AnyStr**, **optional*) -- Str or bytes that
+           encode backward irreversible reaction arrows (default
+           None).
+
+         * **reversible_arrow** (*AnyStr**, **optional*) -- Str or
+           bytes that encode reversible reaction arrows (default
+           None).
+
+         * **term_split** (*str*) -- dividing individual metabolite
+           entries (default "+")".
+
+      Raises:
+         **ValueError** -- No arrow found in reaction string.
+
+   build_reaction_string(use_metabolite_names: bool = False) -> str
+
+      Generate a human readable reaction str.
+
+      Parameters:
+         **use_metabolite_names** (*bool*) -- Whether to use
+         metabolite names (when True) or metabolite ids (when False,
+         default).
+
+      Returns:
+         A human readable str.
+
+      Return type:
+         str
+
+   check_mass_balance() -> Dict[str, float]
+
+      Compute mass and charge balance for the reaction.
+
+      Returns:
+         a dict of {element: amount} for unbalanced elements. "charge"
+         is treated as an element in this dict This should be empty
+         for balanced reactions.
+
+      Return type:
+         dict
+
+      Raises:
+         **ValueError** -- No elements were found in metabolite.
+
+   property compartments: Set
+
+      Return set of compartments the metabolites are in.
+
+      Returns:
+         A set of compartments the metabolites are in.
+
+      Return type:
+         set
+
+   copy() -> Reaction
+
+      Copy a reaction.
+
+      The referenced metabolites and genes are also copied.
+
+      Returns:
+         A copy of the Reaction.
+
+      Return type:
+         cobra.Reaction
+
+   delete(remove_orphans: bool = False) -> None
+
+      Remove the reaction from a model.
+
+      This removes all associations between a reaction the associated
+      model, metabolites and genes.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      use *reaction.remove_from_model* instead.
+
+      Parameters:
+         **remove_orphans** (*bool*) -- Remove orphaned genes and
+         metabolites from the model as well (default False).
+
+   property flux: float
+
+      Get the flux value in the most recent solution.
+
+      Flux is the primal value of the corresponding variable in the
+      model.
+
+      Returns:
+         **flux** -- Flux is the primal value of the corresponding
+         variable in the model.
+
+      Return type:
+         float
+
+      Warning:
+
+        * Accessing reaction fluxes through a *Solution* object is the
+          safer, preferred, and only guaranteed to be correct way. You
+          can see how to do so easily in the examples.
+
+        * Reaction flux is retrieved from the currently defined
+          *self._model.solver*. The solver status is checked but there
+          are no guarantees that the current solver state is the one
+          you are looking for.
+
+        * If you modify the underlying model after an optimization,
+          you will retrieve the old optimization values.
+
+      Raises:
+         * **RuntimeError** -- If the underlying model was never
+           optimized beforehand or the     reaction is not part of a
+           model.
+
+         * **OptimizationError** -- If the solver status is anything
+           other than 'optimal'.
+
+         * **AssertionError** -- If the flux value is not within the
+           bounds.
+
+      -[ Examples ]-
+
+      >>> from cobra.io import load_model
+      >>> model = load_model("textbook")
+      >>> solution = model.optimize()
+      >>> model.reactions.PFK.flux
+      7.477381962160283
+      >>> solution.fluxes.PFK
+      7.4773819621602833
+
+   property flux_expression: Variable | None
+
+      Get Forward flux expression.
+
+      Returns:
+         **flux_expression** -- The expression representing the the
+         forward flux (if associated with model), otherwise None.
+         Representing the net flux if model.reversible_encoding ==
+         'unsplit' or None if reaction is not associated with a model
+
+      Return type:
+         optlang.interface.Variable, optional
+
+   property forward_variable: Variable | None
+
+      Get an optlang variable representing the forward flux.
+
+      Returns:
+         An optlang variable for the forward flux or None if reaction
+         is not associated with a model.
+
+      Return type:
+         optlang.interface.Variable, optional
+
+   property functional: bool
+
+      All required enzymes for reaction are functional.
+
+      Returns:
+         True if the gene-protein-reaction (GPR) rule is fulfilled for
+         this reaction, or if reaction is not associated to a model,
+         otherwise False.
+
+      Return type:
+         bool
+
+   property gene_name_reaction_rule
+
+      Display gene_reaction_rule with names intead.
+
+      Do NOT use this string for computation. It is intended to give a
+      representation of the rule using more familiar gene names
+      instead of the often cryptic ids.
+
+   property gene_reaction_rule: str
+
+      See gene reaction rule as str.
+
+      Uses the to_string() method of the GPR class
+
+      Return type:
+         str
+
+   property genes: FrozenSet
+
+      Return the genes of the reaction.
+
+      Returns:
+         **genes**
+
+      Return type:
+         FrozenSet
+
+   get_coefficient(metabolite_id: str | Metabolite) -> float
+
+      Return the stoichiometric coefficient of a metabolite.
+
+      Parameters:
+         **metabolite_id** (*str** or **cobra.Metabolite*)
+
+   get_coefficients(metabolite_ids: Iterable[str | Metabolite]) -> Iterator[float]
+
+      Return the stoichiometric coefficients for a list of
+      metabolites.
+
+      Parameters:
+         **metabolite_ids** (*iterable*) -- Containing "str" or
+         >>``<<cobra.Metabolite``s.
+
+      Returns:
+         **map** -- Returns the result of map function, which is a map
+         object (an Iterable).
+
+      Return type:
+         Iterable
+
+   get_compartments() -> list
+
+      List compartments the metabolites are in.
+
+      Returns:
+         * *list* -- A list of compartments the metabolites are in.
+
+         * *.. deprecated ::*
+
+         * *Use reaction.compartments() instead.*
+
+   property gpr: GPR
+
+      Return the GPR associated with the reaction.
+
+      Returns:
+         **gpr** -- The GPR class, see cobra.core.gene.GPR() for
+         details.
+
+      Return type:
+         GPR
+
+   knock_out() -> None
+
+      Knockout reaction by setting its bounds to zero.
+
+   property lower_bound: float
+
+      Get the lower bound.
+
+      Returns:
+         The lower bound of the reaction.
+
+      Return type:
+         float
+
+   property metabolites: Dict[Metabolite, float]
+
+      Get a dictionary of metabolites and coefficients.
+
+      Returns:
+         **metaoblites** -- A copy of self._metabolites, which is a
+         dictionary of cobra.Metabolite for keys and floats for
+         coeffecieints. Positive coefficient means the reaction
+         produces this metabolite, while negative coefficient means
+         the reaction consumes this metabolite.
+
+      Return type:
+         Dict[Metabolite, float]
+
+   property model: Model | None
+
+      Return the model the reaction is a part of.
+
+      Returns:
+         **model** -- The model this reaction belongs to. None if
+         there is no model associated with this reaction.
+
+      Return type:
+         cobra.Model, optional
+
+   property objective_coefficient: float
+
+      Get the coefficient for this reaction in a linear objective
+      (float).
+
+      Assuming that the objective of the associated model is summation
+      of fluxes from a set of reactions, the coefficient for each
+      reaction can be obtained individually using this property. A
+      more general way is to use the *model.objective* property
+      directly.
+
+      Returns:
+         Linear coefficient if this reaction has any, or 0.0
+         otherwise.
+
+      Return type:
+         float
+
+      Raises:
+         **AttributeError** -- If the model of the reaction is missing
+         (None).
+
+   property products: List[Metabolite]
+
+      Return a list of products for the reaction.
+
+      Returns:
+         A list of the metabolites produced (coefficient > 0) by the
+         reaction.
+
+      Return type:
+         list
+
+   property reactants: List[Metabolite]
+
+      Return a list of reactants for the reaction.
+
+      Returns:
+         A list of the metabolites consudmed (coefficient < 0) by the
+         reaction.
+
+      Return type:
+         list
+
+   property reaction: str
+
+      Return Human readable reaction str.
+
+      Returns:
+         The reaction in a human readble str.
+
+      Return type:
+         str
+
+   property reduced_cost: float
+
+      Get the reduced cost in the most recent solution.
+
+      Reduced cost is the dual value of the corresponding variable in
+      the model.
+
+      Returns:
+         **reducd_cost** -- A float representing the reduced cost.
+
+      Return type:
+         float
+
+      Warning:
+
+        * Accessing reduced costs through a *Solution* object is the
+          safer, preferred, and only guaranteed to be correct way. You
+          can see how to do so easily in the examples.
+
+        * Reduced cost is retrieved from the currently defined
+          *self._model.solver*. The solver status is checked but there
+          are no guarantees that the current solver state is the one
+          you are looking for.
+
+        * If you modify the underlying model after an optimization,
+          you will retrieve the old optimization values.
+
+      Raises:
+         * **RuntimeError** -- If the underlying model was never
+           optimized beforehand or the     reaction is not part of a
+           model.
+
+         * **OptimizationError** -- If the solver status is anything
+           other than 'optimal'.
+
+      -[ Examples ]-
+
+      >>> from cobra.io import load_model
+      >>> model = load_model("textbook")
+      >>> solution = model.optimize()
+      >>> model.reactions.PFK.reduced_cost
+      -8.673617379884035e-18
+      >>> solution.reduced_costs.PFK
+      -8.6736173798840355e-18
+
+   remove_from_model(remove_orphans: bool = False) -> None
+
+      Remove the reaction from a model.
+
+      This removes all associations between a reaction the associated
+      model, metabolites and genes.
+
+      The change is reverted upon exit when using the model as a
+      context.
+
+      Parameters:
+         **remove_orphans** (*bool*) -- Remove orphaned genes and
+         metabolites from the model as well (default False).
+
+   property reverse_id: str
+
+      Generate the id of reverse_variable from the reaction's id.
+
+      Returns:
+         The original id, joined to the word reverse and a partial
+         hash of the utf-8 encoded id.
+
+      Return type:
+         str
+
+   property reverse_variable: Variable | None
+
+      Get an optlang variable representing the reverse flux.
+
+      Returns:
+         An optlang variable for the reverse flux or None if reaction
+         is not associated with a model.
+
+      Return type:
+         optlang.interface.Variable, optional
+
+   property reversibility: bool
+
+      Whether the reaction can proceed in both directions
+      (reversible).
+
+      This is computed from the current upper and lower bounds.
+
+      Returns:
+         True if the reaction is reversible (lower bound lower than 0
+         and upper bound is higher than 0).
+
+      Return type:
+         bool
+
+   subtract_metabolites(metabolites: Dict[Metabolite, float], combine: bool = True, reversibly: bool = True) -> None
+
+      Subtract metabolites from a reaction.
+
+      That means add the metabolites with -1*coefficient. If the final
+      coefficient for a metabolite is 0 then the metabolite is removed
+      from the reaction.
+
+      -[ Notes ]-
+
+      * A final coefficient < 0 implies a reactant.
+
+      * The change is reverted upon exit when using the model as a
+        context.
+
+      Parameters:
+         * **metabolites** (*dict*) -- Dictionary where the keys are
+           of class Metabolite and the values are the coefficients.
+           These metabolites will be added to the reaction.
+
+         * **combine** (*bool*) -- Describes behavior if a metabolite
+           already exists in the reaction (default True). True causes
+           the coefficients to be added. False causes the coefficient
+           to be replaced.
+
+         * **reversibly** (*bool*) -- Whether to add the change to the
+           context to make the change reversibly or not ,primarily
+           intended for internal use (default True).
+
+   summary(solution: Solution | None = None, fva: float | pd.DataFrame | None = None) -> ReactionSummary
+
+      Create a summary of the reaction flux.
+
+      Parameters:
+         * **solution** (*cobra.Solution**, **optional*) -- A previous
+           model solution to use for generating the summary. If
+           "None", the summary method will generate a parsimonious
+           flux distribution (default None).
+
+         * **fva** (*pandas.DataFrame** or **float**, **optional*) --
+           Whether or not to include flux variability analysis in the
+           output. If given, *fva* should either be a previous FVA
+           solution matching the model or a float between 0 and 1
+           representing the fraction of the optimum objective to be
+           searched (default None).
+
+      Return type:
+         cobra.summary.ReactionSummary
+
+      See also: "Metabolite.summary", "Model.summary"
+
+   update_genes_from_gpr() -> None
+
+      Update genes of reation based on GPR.
+
+      If the reaction has a model, and new genes appear in the GPR,
+      they will be created as Gene() entities and added to the model.
+      If the reaction doesn't have a model, genes will be created
+      without a model.
+
+      Genes that no longer appear in the GPR will be removed from the
+      reaction, but not the model. If you want to remove them
+      expliclty, use model.remove_genes().
+
+   update_variable_bounds() -> None
+
+      Update and correct variable bounds.
+
+      Sets the forward_variable and reverse_variable bounds based on
+      lower and upper bounds. This function corrects for bounds
+      defined as inf or -inf. This function will also adjust the
+      associated optlang variables associated with the reaction.
+
+      See also: "optlang.interface.set_bounds"
+
+   property upper_bound: float
+
+      Get the upper bound.
+
+      Returns:
+         The upper bound of the reaction.
+
+      Return type:
+         float
+
+   property x: float
+
+      Get the flux through the reaction in the most recent solution.
+
+      Flux values are computed from the primal values of the variables
+      in the solution.
+
+      Returns:
+         * **flux** (*float*) -- Float representing the flux value.
+
+         * *.. deprecated ::*
+
+         * *Use reaction.flux instead.*
+
+   property y: float
+
+      Get the reduced cost of the reaction in the most recent
+      solution.
+
+      Reduced costs are computed from the dual values of the variables
+      in the solution.
+
+      Returns:
+         * **flux** (*float*) -- Float representing the reduced cost
+           value.
+
+         * *.. deprecated ::*
+
+         * *Use reaction.reduced_cost instead.*
+
+
+cobra.core.singleton module
+===========================
+
+Define the singleton meta class.
+
+class cobra.core.singleton.Singleton
+
+   Bases: "type"
+
+   Implementation of the singleton pattern as a meta class.
+
+
+cobra.core.solution module
+==========================
+
+Provide unified interfaces to optimization solutions.
+
+class cobra.core.solution.Solution(objective_value: float, status: str, fluxes: Series, reduced_costs: Series | None = None, shadow_prices: Series | None = None, **kwargs)
+
+   Bases: "object"
+
+   A unified interface to a *cobra.Model* optimization solution.
+
+   Parameters:
+      * **objective_value** (*float*) -- The (optimal) value for the
+        objective function.
+
+      * **status** (*str*) -- The solver status related to the
+        solution.
+
+      * **fluxes** (*pandas.Series*) -- Contains the reaction fluxes
+        (primal values of variables).
+
+      * **reduced_costs** (*pandas.Series*) -- Contains reaction
+        reduced costs (dual values of variables) (default None).
+
+      * **shadow_prices** (*pandas.Series*) -- Contains metabolite
+        shadow prices (dual values of constraints) (default None).
+
+   objective_value
+
+      The (optimal) value for the objective function.
+
+      Type:
+         float
+
+   status
+
+      The solver status related to the solution.
+
+      Type:
+         str
+
+   fluxes
+
+      Contains the reaction fluxes (primal values of variables).
+
+      Type:
+         pandas.Series
+
+   reduced_costs
+
+      Contains reaction reduced costs (dual values of variables).
+
+      Type:
+         pandas.Series
+
+   shadow_prices
+
+      Contains metabolite shadow prices (dual values of constraints).
+
+      Type:
+         pandas.Series
+
+   -[ Notes ]-
+
+   Solution is meant to be constructed by *get_solution* please look
+   at that function to fully understand the *Solution* class.
+
+   get_primal_by_id(reaction_id: str) -> float
+
+      Return the flux of a reaction.
+
+      Parameters:
+         **reaction_id** (*str*) -- A model reaction ID.
+
+      Returns:
+         The flux of the reaction with ID *reaction_id*.
+
+      Return type:
+         float
+
+   to_frame() -> DataFrame
+
+      Return the fluxes and reduced costs as a pandas DataFrame.
+
+      Returns:
+         The fluxes and reduced cost.
+
+      Return type:
+         pandas.DataFrame
+
+cobra.core.solution.get_solution(model: Model, reactions: Iterable[Reaction] | None = None, metabolites: Iterable[Metabolite] | None = None, raise_error: bool = False) -> Solution
+
+   Generate a solution representation of the current solver state.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model whose reactions to
+        retrieve values for.
+
+      * **reactions** (*list**, **optional*) -- An iterable of
+        *cobra.Reaction* objects. Uses *model.reactions* if None
+        (default None).
+
+      * **metabolites** (*list**, **optional*) -- An iterable of
+        *cobra.Metabolite* objects. Uses *model.metabolites* if None
+        (default None).
+
+      * **raise_error** (*bool*) -- If True, raise an
+        OptimizationError if solver status is not optimal (default
+        False).
+
+   Return type:
+      cobra.Solution
+
+
+cobra.core.species module
+=========================
+
+Define the Species class, used as a base for Gene and Metabolite.
+
+class cobra.core.species.Species(id: str | None = None, name: str | None = None, **kwargs)
+
+   Bases: "Object"
+
+   Species is a base class in Cobrapy.
+
+   Species is a class for holding information regarding a chemical
+   Species
+
+   Parameters:
+      * **id** (*string*) -- An identifier for the chemical species
+
+      * **name** (*string*) -- A human readable name.
+
+   copy() -> Species
+
+      Copy a species.
+
+      When copying a reaction, it is necessary to deepcopy the
+      components so the list references aren't carried over.
+
+      Additionally, a copy of a reaction is no longer in a
+      cobra.Model.
+
+      This should be fixed with self.__deepcopy__ if possible
+
+      Returns:
+         A copy of the species.
+
+      Return type:
+         Species
+
+   property model: Model | None
+
+      Return the model.
+
+      Returns:
+         Returns the cobra model that the species is associated with.
+         None if there is no model associated with this species.
+
+      Return type:
+         model
+
+   property reactions: FrozenSet
+
+      Return a frozenset of reactions.
+
+      Returns:
+         A frozenset that includes the reactions of the species.
+
+      Return type:
+         FrozenSet
+
+
+Module contents
+===============

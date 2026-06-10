@@ -1,0 +1,185 @@
+cobra.medium package
+********************
+
+
+Submodules
+==========
+
+
+cobra.medium.annotations module
+===============================
+
+Provide lists and annotations for compartment names and reactions.
+
+Please send a PR if you want to add something here :)
+
+
+cobra.medium.boundary_types module
+==================================
+
+Provide functions to identify the type of boundary reactions.
+
+This module uses various heuristics to decide whether a boundary
+reaction is an exchange, demand or sink reaction. It mostly orientates
+on the following paper:
+
+Thiele, I., & Palsson, B. Ø. (2010, January). A protocol for
+generating a high-quality genome-scale metabolic reconstruction.
+Nature protocols. Nature Publishing Group.
+http://doi.org/10.1038/nprot.2009.203
+
+cobra.medium.boundary_types.find_boundary_types(model: Model, boundary_type: str, external_compartment: str | None = None) -> List[Reaction]
+
+   Find specific boundary reactions.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model whose boundary
+        reactions are to be found.
+
+      * **boundary_type** (*{"exchange"**, **"demand"**, **"sink"}*)
+        -- Boundary type to check for.
+
+      * **external_compartment** (*str**, **optional*) -- The ID for
+        the external compartment. If None, it will be detected
+        automatically (default None).
+
+   Returns:
+      A list of likely boundary reactions of a user defined type.
+
+   Return type:
+      list of cobra.Reaction or an empty list
+
+cobra.medium.boundary_types.find_external_compartment(model: Model) -> str
+
+   Find the external compartment in the model.
+
+   Uses a simple heuristic where the external compartment should be
+   the one with the most exchange reactions.
+
+   Parameters:
+      **model** (*cobra.Model*) -- The cobra model whose external
+      compartments are to be identified.
+
+   Returns:
+      The putative external compartment.
+
+   Return type:
+      str
+
+   Raises:
+      **RuntimeError** -- If several compartments are similar and thus
+      difficult to identify,     or, recognized names usually used for
+      external compartment are     absent.
+
+cobra.medium.boundary_types.is_boundary_type(reaction: Reaction, boundary_type: str, external_compartment: str) -> bool
+
+   Check whether a reaction is an exchange reaction.
+
+   Parameters:
+      * **reaction** (*cobra.Reaction*) -- The reaction to check.
+
+      * **boundary_type** (*{"exchange"**, **"demand"**, **"sink"}*)
+        -- Boundary type to check for.
+
+      * **external_compartment** (*str*) -- The ID for the external
+        compartment.
+
+   Returns:
+      Whether the reaction looks like the requested type. Might be
+      based on a heuristic.
+
+   Return type:
+      bool
+
+
+cobra.medium.minimal_medium module
+==================================
+
+Provide functions and helpers to obtain minimal growth media.
+
+cobra.medium.minimal_medium.add_linear_obj(model: Model) -> None
+
+   Add a linear version of a minimal medium to the model solver.
+
+   Changes the optimization objective to finding the growth medium
+   requiring the smallest total import flux:
+
+   ..math:: minimize sum_{r_i in import_reactions} >>|r_i|<<
+
+   Parameters:
+      **model** (*cobra.Model*) -- The cobra model to modify.
+
+cobra.medium.minimal_medium.add_mip_obj(model: Model) -> None
+
+   Add a mixed-integer version of a minimal medium to the model.
+
+   Changes the optimization objective to finding the medium with the
+   least components:
+
+   minimize size(R) where R part of import_reactions
+
+   Parameters:
+      **model** (*cobra.model*) -- The model to modify.
+
+cobra.medium.minimal_medium.minimal_medium(model: Model, min_objective_value: float = 0.1, exports: bool = False, minimize_components: bool | int = False, open_exchanges: bool = False) -> Series | DataFrame | None
+
+   Find the minimal growth medium for the *model*.
+
+   Finds the minimal growth medium for the *model* which allows for
+   model as well as individual growth. Here, a minimal medium can
+   either be the medium requiring the smallest total import flux or
+   the medium requiring the least components (ergo ingredients), which
+   will be much slower due to being a mixed integer problem (MIP).
+
+   Parameters:
+      * **model** (*cobra.model*) -- The model to modify.
+
+      * **min_objective_value** (*float > 0** or **array-like
+        object**, **optional*) -- The minimum growth rate (objective)
+        that has to be achieved (default 0.1).
+
+      * **exports** (*bool**, **optional*) -- Whether to include
+        export fluxes in the returned medium. Defaults to False which
+        will only return import fluxes (default False).
+
+      * **minimize_components** (*bool** or **int > 0**, **optional*)
+        -- Whether to minimize the number of components instead of the
+        total import flux. Might be more intuitive if set to True, but
+        may also be slow to calculate for large communities. If set to
+        a number *n* will return up to *n* alternative solutions all
+        with the same number of components (default False).
+
+      * **open_exchanges** (*bool** or **number**, **optional*) --
+        Whether to ignore currently set bounds and make all exchange
+        reactions in the *model* possible. If set to a *number*, all
+        exchange reactions will be opened with (-*number*, *number*)
+        as bounds (default False).
+
+   Returns:
+      A pandas.Series giving the import flux for each required import
+      reaction and (optionally) the associated export fluxes. All
+      exchange fluxes are oriented into the import reaction e.g.
+      positive fluxes denote imports and negative fluxes exports. If
+      *minimize_components* is a number larger than 1, may return a
+      pandas.DataFrame where each column is a minimal medium. Returns
+      None, if the minimization is infeasible (for instance if
+      min_growth > maximum growth rate).
+
+   Return type:
+      pandas.Series, pandas.DataFrame or None
+
+   -[ Notes ]-
+
+   Due to numerical issues, the *minimize_components* option will
+   usually only minimize the number of "large" import fluxes.
+   Specifically, the detection limit is given by
+   "integrality_tolerance * max_bound" where "max_bound" is the
+   largest bound on an import reaction. Thus, if you are interested in
+   small import fluxes as well you may have to adjust the solver
+   tolerance at first with *model.tolerance = 1e-7* for instance.
+   However, this will be *very* slow for large models especially with
+   GLPK.
+
+
+Module contents
+===============

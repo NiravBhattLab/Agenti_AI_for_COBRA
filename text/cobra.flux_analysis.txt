@@ -1,0 +1,1603 @@
+cobra.flux_analysis package
+***************************
+
+
+Submodules
+==========
+
+
+cobra.flux_analysis.deletion module
+===================================
+
+Provide functions for reaction and gene deletions.
+
+class cobra.flux_analysis.deletion.KnockoutAccessor(pandas_obj: DataFrame | Series)
+
+   Bases: "object"
+
+   Access unique combinations of reactions in deletion results.
+
+   This allows acces in the form of *results.knockout[rxn1]* or
+   *results.knockout["rxn1_id"]*. Each individual entry will return a
+   deletion so *results.knockout[rxn1, rxn2]* will return two
+   deletions (for individual knockouts of rxn1 and rxn2 respectively).
+   Multi-deletions can be accessed by passing in sets like
+   *results.knockout[{rxn1, rxn2}]* which denotes the double deletion
+   of both reactions. Thus, the following are allowed index elements:
+
+   * single reactions or genes (depending on whether it is a gene or
+     reaction deletion)
+
+   * single reaction IDs or gene IDs
+
+   * lists of single single reaction IDs or gene IDs (will return one
+     row for each element in the list)
+
+   * sets of reactions or genes (for multi-deletions)
+
+   * sets of reactions IDs or gene IDs
+
+   * list of sets of objects or IDs (to get several multi-deletions)
+
+
+   Parameters:
+   -----------
+
+   pandas_obj : pandas.DataFrame or pandas.Series
+      A result from one of the deletion methods.
+
+cobra.flux_analysis.deletion.double_gene_deletion(model: Model, gene_list1: List[Gene | str] | None = None, gene_list2: List[Gene | str] | None = None, method: str = 'fba', solution: Solution | None = None, processes: int | None = None, **kwargs) -> DataFrame
+
+   Knock out each gene pair from the combination of two given lists.
+
+   We say 'pair' here but the order order does not matter.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The metabolic model to perform
+        deletions in.
+
+      * **gene_list1** (*list** of **cobra.Gene** or **str**,
+        **optional*) -- The first gene list to be deleted. If not
+        passed, all the genes from the model are used (default None).
+
+      * **gene_list2** (*list** of **cobra.Gene** or **str**,
+        **optional*) -- The second gene list to be deleted. If not
+        passed, all the genes from the model are used (default None).
+
+      * **method** (*{"fba"**, **"moma"**, **"linear moma"**,
+        **"room"**, **"linear room"}**, **optional*) -- Method used to
+        predict the growth rate (default None).
+
+      * **solution** (*cobra.Solution**, **optional*) -- A previous
+        solution to use as a reference for (linear) MOMA or ROOM
+        (default None).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. Can speed up the computations if the number
+        of knockouts to perform is large. If not passed, will be set
+        to *configuration.processes* (default None).
+
+      * ****kwargs** -- Keyword arguments are passed on to underlying
+        simulation functions such as *add_room*.
+
+   Returns:
+      A representation of all combinations of gene deletions. The
+      columns are 'growth' and 'status', where
+
+      index : tuple(str)
+         The gene identifiers that were knocked out.
+
+      growth : float
+         The growth rate of the adjusted model.
+
+      status : str
+         The solution's status.
+
+   Return type:
+      pandas.DataFrame
+
+cobra.flux_analysis.deletion.double_reaction_deletion(model: Model, reaction_list1: List[str | Reaction] | None = None, reaction_list2: List[str | Reaction] | None = None, method: str = 'fba', solution: Solution | None = None, processes: int | None = None, **kwargs) -> DataFrame
+
+   Knock out each reaction pair from the combinations of two given
+   lists.
+
+   We say 'pair' here but the order order does not matter.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The metabolic model to perform
+        deletions in.
+
+      * **reaction_list1** (*list** of **cobra.Reaction** or **str**,
+        **optional*) -- The first reaction list to be deleted. If not
+        passed, all the reactions from the model are used (default
+        None).
+
+      * **reaction_list2** (*list** of **cobra.Reaction** or **str**,
+        **optional*) -- The second reaction list to be deleted. If not
+        passed, all the reactions from the model are used (default
+        None).
+
+      * **method** (*{"fba"**, **"moma"**, **"linear moma"**,
+        **"room"**, **"linear room"}**, **optional*) -- Method used to
+        predict the growth rate (default "fba").
+
+      * **solution** (*cobra.Solution**, **optional*) -- A previous
+        solution to use as a reference for (linear) MOMA or ROOM
+        (default None).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. Can speed up the computations if the number
+        of knockouts to perform is large. If not passed, will be set
+        to *configuration.processes* (default None).
+
+      * ****kwargs** -- Keyword arguments are passed on to underlying
+        simulation functions such as *add_room*.
+
+   Returns:
+      A representation of all combinations of reaction deletions. The
+      columns are 'growth' and 'status', where
+
+      index : tuple(str)
+         The reaction identifiers that were knocked out.
+
+      growth : float
+         The growth rate of the adjusted model.
+
+      status : str
+         The solution's status.
+
+   Return type:
+      pandas.DataFrame
+
+cobra.flux_analysis.deletion.single_gene_deletion(model: Model, gene_list: List[Gene | str] | None = None, method: str = 'fba', solution: Solution | None = None, processes: int | None = None, **kwargs) -> DataFrame
+
+   Knock out each gene from *gene_list*.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The metabolic model to perform
+        deletions in.
+
+      * **gene_list** (*list** of **cobra.Gene** or **str**,
+        **optional*) -- The gene objects to be deleted. If not passed,
+        all the genes from the model are used (default None).
+
+      * **method** (*{"fba"**, **"moma"**, **"linear moma"**,
+        **"room"**, **"linear room"}**, **optional*) -- Method used to
+        predict the growth rate (default "fba").
+
+      * **solution** (*cobra.Solution**, **optional*) -- A previous
+        solution to use as a reference for (linear) MOMA or ROOM
+        (default None).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. Can speed up the computations if the number
+        of knockouts to perform is large. If not passed, will be set
+        to *configuration.processes* (default None).
+
+      * ****kwargs** -- Keyword arguments are passed on to underlying
+        simulation functions such as *add_room*.
+
+   Returns:
+      A representation of all single gene deletions. The columns are
+      'growth' and 'status', where
+
+      index : tuple(str)
+         The gene identifier that was knocked out.
+
+      growth : float
+         The growth rate of the adjusted model.
+
+      status : str
+         The solution's status.
+
+   Return type:
+      pandas.DataFrame
+
+cobra.flux_analysis.deletion.single_reaction_deletion(model: Model, reaction_list: List[str | Reaction] | None = None, method: str = 'fba', solution: Solution | None = None, processes: int | None = None, **kwargs) -> DataFrame
+
+   Knock out each reaction from *reaction_list*.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The metabolic model to perform
+        deletions in.
+
+      * **reaction_list** (*list** of **cobra.Reaction** or **str**,
+        **optional*) -- The reactions be knocked out. If not passed,
+        all the reactions from the model are used (default None).
+
+      * **method** (*{"fba"**, **"moma"**, **"linear moma"**,
+        **"room"**, **"linear room"}**, **optional*) -- Method used to
+        predict the growth rate (default "fba").
+
+      * **solution** (*cobra.Solution**, **optional*) -- A previous
+        solution to use as a reference for (linear) MOMA or ROOM
+        (default None).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. Can speed up the computations if the number
+        of knockouts to perform is large. If not passed, will be set
+        to *configuration.processes* (default None).
+
+      * ****kwargs** -- Keyword arguments are passed on to underlying
+        simulation functions such as *add_room*.
+
+   Returns:
+      A representation of all single reaction deletions. The columns
+      are 'growth' and 'status', where
+
+      index : tuple(str)
+         The reaction identifier that was knocked out.
+
+      growth : float
+         The growth rate of the adjusted model.
+
+      status : str
+         The solution's status.
+
+   Return type:
+      pandas.DataFrame
+
+
+cobra.flux_analysis.fast_snp module
+===================================
+
+Provides Fast-SNP algorithm implementation for finding nullspace basis
+of matrix.
+
+cobra.flux_analysis.fast_snp.nullspace_fast_snp(solver: <module 'optlang.interface' from 'C:\\Users\\Saathvik\\anaconda3\\Lib\\site-packages\\optlang\\interface.py'>, S: ndarray, directions: ndarray, v_bound: float = 10000.0, zero_cutoff: float = 1e-06, bias: float = 1, required_stop_checks_num: int = 3) -> ndarray
+
+   Compute an approximate basis for the nullspace of S with coordinate
+   directions.
+
+   The algorithm used by this function is described in >>[1]_<<.
+
+   Parameters:
+      * **solver** (*"optlang.interface"*) -- The solver interface to
+        use for the optimization problem. You can use *model.problem*
+        to get the solver interface.
+
+      * **S** (*numpy.ndarray*) -- The matrix for which the nullspace
+        is computed. *S* should be a 2-D array.
+
+      * **directions** (*numpy.ndarray*) --
+
+        A 2-D array with shape (k, 2) where *k* is the number of
+        columns in *S*. This array specifies the directions of
+        coordinates. Each row should be:
+
+           * [0, 0] for coordinates that can be only zero
+
+           * [0, 1] for coordinates that can be only positive
+
+           * [-1, 0] for coordinates that can be only negative
+
+           * [-1, 1] for coordinates that can be both positive and
+             negative
+
+      * **v_bound** (*float**, **optional*) -- The bound for the
+        variables in the optimization problem (default 1e4).
+
+      * **zero_cutoff** (*float**, **optional*) -- The cutoff value to
+        consider a coordinate value as zero (default 1e-6).
+
+      * **bias** (*float**, **optional*) -- The bias for the non-zero
+        constraint in the optimization problem (default 1).
+
+      * **required_stop_checks_num** (*int**, **optional*) -- The
+        number of random checks to pass to prove that basis could not
+        be expanded (default 3).
+
+   Returns:
+      If *S* is an array with shape (m, k), then an array with shape
+      (k, n) will be returned, where *n* is the dimension of the
+      nullspace of *S* with *directions*. Each column of this array is
+      a basis vector for the nullspace; each element in numpy.dot(S,
+      column) will be approximately zero. Each coordinate in the
+      column will have an allowed sign according to the *directions*
+      parameter.
+
+   Return type:
+      numpy.ndarray
+
+   -[ References ]-
+
+   [1] Fast-SNP: a fast matrix pre-processing algorithm for efficient
+       loopless flux optimization of metabolic models. Saa PA, Nielsen
+       LK. Bioinformatics. 2016 Dec;32(24):3807–3814. doi:
+       10.1093/bioinformatics/btw555.
+
+
+cobra.flux_analysis.fastcc module
+=================================
+
+Provide an implementation of FASTCC.
+
+cobra.flux_analysis.fastcc.fastcc(model: Model, flux_threshold: float = 1.0, zero_cutoff: float | None = None) -> Model
+
+   Check consistency of a metabolic network using FASTCC >>[1]_<<.
+
+   FASTCC (Fast Consistency Check) is an algorithm for rapid and
+   efficient consistency check in metabolic networks. FASTCC is a pure
+   LP implementation and is low on computation resource demand. FASTCC
+   also circumvents the problem associated with reversible reactions
+   for the purpose. Given a global model, it will generate a
+   consistent global model i.e., remove blocked reactions. For more
+   details on FASTCC, please check >>[1]_<<.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to operate on.
+
+      * **flux_threshold** (*float**, **optional*) -- The flux
+        threshold to consider (default 1.0).
+
+      * **zero_cutoff** (*float**, **optional*) -- The cutoff to
+        consider for zero flux (default model.tolerance).
+
+   Returns:
+      The consistent model.
+
+   Return type:
+      cobra.Model
+
+   -[ Notes ]-
+
+   The LP used for FASTCC is like so: maximize: sum_{i in J} z_i s.t.
+   : z_i in [0, varepsilon] forall i in J, z_i in mathbb{R}_+
+
+      v_i ge z_i forall i in J Sv = 0 v in B
+
+   -[ References ]-
+
+   [1] Vlassis N, Pacheco MP, Sauter T (2014) Fast Reconstruction of
+       Compact Context-Specific Metabolic Network Models. PLoS Comput
+       Biol 10(1): e1003424. doi:10.1371/journal.pcbi.1003424
+
+
+cobra.flux_analysis.find_cyclic_reactions module
+================================================
+
+Provides a function to find cyclic reactions in a metabolic model.
+
+cobra.flux_analysis.find_cyclic_reactions.find_cyclic_reactions(model: Model, zero_cutoff: float | None = None, bound: float = 10000.0, method: str = 'optimized', required_stop_checks_num: int = 3) -> Tuple[List[str], List[Tuple[bool, bool]]]
+
+   Find reactions, that can be in a loop in a steady state flux
+   distribution.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The metabolic model to analyze.
+
+      * **zero_cutoff** (*float**, **optional*) -- The cutoff value to
+        consider a flux as zero. The default uses the
+        *model.tolerance* (default None).
+
+      * **bound** (*float**, **optional*) -- The bound for the
+        reaction fluxes in the optimization problem. (default is 1e4).
+
+      * **method** (*str**, **optional*) -- The method to use for
+        finding cyclic reactions. Options are "optimized" (default) or
+        "basic". See notes for details.
+
+      * **required_stop_checks_num** (*int**, **optional*) -- This
+        parameter is used only for the "optimized" method. The number
+        of random checks to pass to prove that all cyclic reactions
+        were found. (default is 3).
+
+   Returns:
+      * A list of reaction IDs that can be part of a loop.
+
+      * A list of tuples indicating the possible directions of
+        reactions from the first list in the loop. Each tuple contains
+        two boolean values: (can_be_negative, can_be_positive).
+
+   Return type:
+      A tuple containing two lists
+
+   -[ Notes ]-
+
+   This function considers only the stoichiometric matrix and reaction
+   directions. Any other constraints present in the model are ignored.
+   * If a reaction is identified as cyclic, there may still be no
+   feasible loop
+
+      when taking into account all bounds and additional constraints.
+
+   * However, if a reaction is identified as non-cyclic, it cannot
+     participate in any loop in a steady-state flux distribution.
+
+   The "basic" method for each reaction and direction checks if it can
+   be a part of a loop by optimizing linear programming problem.
+
+   The "optimized" method uses a faster randomized approach to firstly
+   find all reactions that can be part of a loop and then checks their
+   directions. This method usually works at least 2 times faster than
+   the "basic" method. The *required_stop_checks_num* parameter is
+   used to descrease the probability of missing some cyclic reactions.
+
+
+cobra.flux_analysis.gapfilling module
+=====================================
+
+Provide the base class and utility function for gap filling.
+
+class cobra.flux_analysis.gapfilling.GapFiller(model: Model, universal: Model | None = None, lower_bound: float = 0.05, penalties: Dict[str, int] | Dict[Reaction, int] | None = None, exchange_reactions: bool = False, demand_reactions: bool = True, integer_threshold: float = 1e-06, **kwargs)
+
+   Bases: "object"
+
+   The base class for performing gap filling.
+
+   This class implements gap filling based on a mixed-integer
+   approach, very similar to that described in >>[1]_<< and the 'no-
+   growth but growth' part of >>[2]_<< but with minor adjustments. In
+   short, we add indicator variables for using the reactions in the
+   universal model, z_i and then solve problem
+
+   minimize: sum_i c_i * z_i s.t.    : Sv = 0
+
+      v_o ge t lb_i le v_i le ub_i v_i = 0 if z_i = 0
+
+   where lb, ub are respectively the upper, lower flux bounds for
+   reaction i, c_i is a cost parameter and the objective v_o is
+   greater than the lower bound t. The default costs are 1 for
+   reactions from the universal model, 100 for exchange (uptake)
+   reactions added and 1 for added demand reactions.
+
+   Note that this is a mixed-integer linear program and as such will
+   be expensive to solve for large models. Consider using alternatives
+   >>[3]_<< such as CORDA instead [4,5]_ .
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to perform gap filling
+        on.
+
+      * **universal** (*cobra.Model**, **optional*) -- A universal
+        model with reactions that can be used to complete the *model*
+        (default None).
+
+      * **lower_bound** (*float**, **optional*) -- The minimally
+        accepted flux for the objective in the filled model (default
+        0.05).
+
+      * **penalties** (*dict**, **optional*) -- A dictionary with keys
+        being 'universal' (all reactions included in the universal
+        model), 'exchange' and 'demand' (all additionally added
+        exchange and demand reactions) for the three reaction types.
+        Can also have reaction identifiers for reaction specific
+        costs. Defaults are 1, 100 and 1 respectively (default None).
+
+      * **exchange_reactions** (*bool**, **optional*) -- Consider
+        adding exchange (uptake) reactions for all metabolites in the
+        model (default False).
+
+      * **demand_reactions** (*bool**, **optional*) -- Consider adding
+        demand reactions for all metabolites (default True).
+
+      * **integer_threshold** (*float**, **optional*) -- The threshold
+        at which a value is considered non-zero (aka integrality
+        threshold). If gapfilled models fail to validate, you may want
+        to lower this value (default 1E-6).
+
+   indicators
+
+      The list of symbolic indicator variables.
+
+      Type:
+         list of optlang.interface.Variable
+
+   costs
+
+      The dictionary with symbolic variables as keys and their cost as
+      values.
+
+      Type:
+         dict of {optlang.interface.Variable: float}
+
+   -[ References ]-
+
+   [1] Reed, Jennifer L., Trina R. Patel, Keri H. Chen, Andrew R.
+       Joyce, Margaret K. Applebee, Christopher D. Herring, Olivia T.
+       Bui, Eric M. Knight, Stephen S. Fong, and Bernhard O. Palsson.
+       “Systems Approach to Refining Genome Annotation.” Proceedings
+       of the National Academy of Sciences 103, no. 46 (2006):
+       17480–17484.
+
+   [2] Kumar, Vinay Satish, and Costas D. Maranas. “GrowMatch: An
+       Automated Method for Reconciling In Silico/In Vivo Growth
+       Predictions.” Edited by Christos A. Ouzounis. PLoS
+       Computational Biology 5, no. 3 (March 13, 2009): e1000308.
+       doi:10.1371/journal.pcbi.1000308.
+
+   [3] http://opencobra.github.io/cobrapy/tags/gapfilling/
+
+   [4] Schultz, André, and Amina A. Qutub. “Reconstruction of Tissue-
+       Specific Metabolic Networks Using CORDA.” Edited by Costas D.
+       Maranas. PLOS Computational Biology 12, no. 3 (March 4, 2016):
+       e1004808. doi:10.1371/journal.pcbi.1004808.
+
+   [5] Diener, Christian https://github.com/cdiener/corda
+
+   add_switches_and_objective() -> None
+
+      Update gap filling model with switches and indicator objective.
+
+   extend_model(exchange_reactions: bool = False, demand_reactions: bool = True) -> None
+
+      Extend gap filling model.
+
+      Add reactions from universal model and optionally exchange and
+      demand reactions for all metabolites in the model to perform gap
+      filling on.
+
+      Parameters:
+         * **exchange_reactions** (*bool**, **optional*) -- Consider
+           adding exchange (uptake) reactions for all metabolites in
+           the model (default False).
+
+         * **demand_reactions** (*bool**, **optional*) -- Consider
+           adding demand reactions for all metabolites (default True).
+
+   fill(iterations: int = 1) -> List[List[Reaction]]
+
+      Perform the gap filling.
+
+      With every iteration, it solves the model, updates the costs and
+      records the used reactions.
+
+      Parameters:
+         **iterations** (*int**, **optional*) -- The number of rounds
+         of gap filling to perform. For every iteration, the penalty
+         for every used reaction increases linearly. This way, the
+         algorithm is encouraged to search for alternative solutions
+         which may include previously used reactions i.e., with enough
+         iterations pathways including 10 steps will eventually be
+         reported even if the shortest pathway is a single reaction
+         (default 1).
+
+      Returns:
+         A list of lists where each element is a list of reactions
+         that were used to gap fill the model.
+
+      Return type:
+         list of list of cobra.Reaction
+
+      Raises:
+         **RuntimeError** -- If the model fails to be validated (i.e.
+         the original model with     the proposed reactions added,
+         still cannot get the required flux     through the
+         objective).
+
+   update_costs() -> None
+
+      Update coefficients for the indicator variables in the
+      objective.
+
+      Done incrementally so that second time the function is called,
+      active indicators in the current solutions gets higher cost than
+      the unused indicators.
+
+   validate(reactions: List[Reaction]) -> bool
+
+      Validate the model.
+
+      Parameters:
+         **reactions** (*list** of **cobra.Reaction*) -- The reactions
+         to add to the model for validation.
+
+      Returns:
+         Whether the model is valid or not.
+
+      Return type:
+         bool
+
+cobra.flux_analysis.gapfilling.gapfill(model: Model, universal: Model | None = None, lower_bound: float = 0.05, penalties: Dict[str, Reaction] | None = None, demand_reactions: bool = True, exchange_reactions: bool = False, iterations: int = 1)
+
+   Perform gap filling on a model.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to perform gap filling
+        on.
+
+      * **universal** (*cobra.Model**, **optional*) -- A universal
+        model with reactions that can be used to complete the model.
+        Only gapfill considering demand and exchange reactions if left
+        missing (default None).
+
+      * **lower_bound** (*float**, **optional*) -- The minimally
+        accepted flux for the objective in the filled model. (default
+        0.05).
+
+      * **penalties** (*dict**, **optional*) -- A dictionary with keys
+        being 'universal' (all reactions included in the universal
+        model), 'exchange' and 'demand' (all additionally added
+        exchange and demand reactions) for the three reaction types.
+        Can also have reaction identifiers for reaction specific
+        costs. Defaults are 1, 100 and 1 respectively (default None).
+
+      * **exchange_reactions** (*bool**, **optional*) -- Consider
+        adding exchange (uptake) reactions for all metabolites in the
+        model (default False).
+
+      * **demand_reactions** (*bool**, **optional*) -- Consider adding
+        demand reactions for all metabolites (default True).
+
+      * **iterations** (*int**, **optional*) -- The number of rounds
+        of gap filling to perform. For every iteration, the penalty
+        for every used reaction increases linearly. This way, the
+        algorithm is encouraged to search for alternative solutions
+        which may include previously used reactions i.e., with enough
+        iterations pathways including 10 steps will eventually be
+        reported even if the shortest pathway is a single reaction
+        (default 1).
+
+   Returns:
+      A list of lists with on set of reactions that completes the
+      model per requested iteration.
+
+   Return type:
+      list of list of cobra.Reaction
+
+   -[ Examples ]-
+
+   >>> from cobra.io import load_model
+   >>> from cobra import Model
+   >>> from cobra.flux_analysis import gapfill
+   >>> model = load_model("iYS1720")
+   >>> universal = Model("universal")
+   >>> universal.add_reactions([model.reactions.GF6PTA.copy()])
+   >>> model.remove_reactions([model.reactions.GF6PTA])
+   >>> gapfill(model, universal)
+   [[<Reaction GF6PTA at 0x12206a280>]]
+
+
+cobra.flux_analysis.geometric module
+====================================
+
+Provide an implementation of geometric FBA.
+
+cobra.flux_analysis.geometric.geometric_fba(model: Model, epsilon: float = 1e-06, max_tries: int = 200, processes: int | None = None) -> Solution
+
+   Perform geometric FBA to obtain a unique, centered flux
+   distribution.
+
+   Geometric FBA >>[1]_<< formulates the problem as a polyhedron and
+   then solves it by bounding the convex hull of the polyhedron. The
+   bounding forms a box around the convex hull which reduces with
+   every iteration and extracts a unique solution in this way.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to perform geometric
+        FBA on.
+
+      * **epsilon** (*float**, **optional*) -- The convergence
+        tolerance of the model (default 1E-06).
+
+      * **max_tries** (*int**, **optional*) -- Maximum number of
+        iterations (default 200).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. If not explicitly passed, will be set from
+        the global configuration singleton (default None).
+
+   Returns:
+      The solution object containing all the constraints required for
+      geometric FBA.
+
+   Return type:
+      cobra.Solution
+
+   Raises:
+      **RuntimeError** -- If iteration count becomes equal to
+      *max_tries*.
+
+   -[ References ]-
+
+   [1] Smallbone, Kieran & Simeonidis, Vangelis. (2009). Flux balance
+       analysis: A geometric perspective. Journal of theoretical
+       biology.258. 311-5. 10.1016/j.jtbi.2009.01.027.
+
+
+cobra.flux_analysis.helpers module
+==================================
+
+Helper functions for all flux analysis methods.
+
+cobra.flux_analysis.helpers.normalize_cutoff(model: Model, zero_cutoff: float | None = None) -> float
+
+   Return a valid zero cutoff value.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to operate on.
+
+      * **zero_cutoff** (*positive float**, **optional*) -- The zero
+        cutoff value. If not specified, defaults to *model.tolerance*
+        (default None).
+
+   Returns:
+      The normalized zero cutoff value.
+
+   Return type:
+      float
+
+   Raises:
+      **ValueError** -- If the specified *zero_cutoff* is lesser than
+      *model.tolerance*.
+
+
+cobra.flux_analysis.loopless module
+===================================
+
+Provide functions to remove thermodynamically infeasible loops.
+
+cobra.flux_analysis.loopless.add_loopless(model: Model, zero_cutoff: float | None = None, method: str = 'fastSNP', reactions: List[str] | None = None) -> None
+
+   Modify a model so all feasible flux distributions are loopless.
+
+   It adds variables and constraints to a model which will disallow
+   flux distributions with loops. This function *will* modify your
+   model.
+
+   The used formulation is described in >>[1]_<<. If *method* is set
+   to "fastSNP", it uses a faster implementation based on the Fast-SNP
+   algorithm >>[2]_<<.
+
+   In most cases you probably want to use the much faster
+   *loopless_solution*. May be used in cases where you want to add
+   complex constraints and objecives (for instance quadratic
+   objectives) to the model afterwards or use an approximation of
+   Gibbs free energy directions in your model.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to which to add the
+        constraints.
+
+      * **zero_cutoff** (*positive float**, **optional*) -- Cutoff
+        used for null space. Coefficients with an absolute value
+        smaller than *zero_cutoff* are considered to be zero. The
+        default uses the *model.tolerance* (default None).
+
+      * **method** (*str**, **"original"** or **"fastSNP"**,
+        **optional*) -- The method to use for finding the null space.
+        The "original" method uses the original method from >>[1]_<<,
+        while "fastSNP" uses a faster implementation based on the
+        FastSNP algorithm. The "fastSNP" method is much faster and
+        should be used in most cases.
+
+      * **reactions** (*list** of **str**, **optional*) -- The list of
+        reaction IDs to constrain. All cycles within these reactions
+        will be removed. If *None*, all reactions will be constrained.
+
+   -[ References ]-
+
+   [1] Elimination of thermodynamically infeasible loops in steady-
+       state metabolic models. Schellenberger J, Lewis NE, Palsson BO.
+       Biophys J. 2011 Feb 2;100(3):544-53. doi:
+       10.1016/j.bpj.2010.12.3707. Erratum in: Biophys J. 2011 Mar
+       2;100(5):1381.
+
+   [2] Fast-SNP: a fast matrix pre-processing algorithm for efficient
+       loopless flux optimization of metabolic models. Saa PA, Nielsen
+       LK. Bioinformatics. 2016 Dec;32(24):3807–3814. doi:
+       10.1093/bioinformatics/btw555.
+
+cobra.flux_analysis.loopless.loopless_fva_iter(model: Model, reaction: Reaction, solution: bool = False, zero_cutoff: float | None = None) -> float | Dict[str, float]
+
+   Plugin to get a loopless FVA solution from single FVA iteration.
+
+   Assumes the following about *model* and *reaction*: 1. The model
+   objective is set to be *reaction*. 2. The model has been optimized
+   and contains the minimum/maximum flux
+
+      for *reaction*.
+
+   3. The model contains an auxiliary variable called
+      "fva_old_objective" denoting the previous objective.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to be used.
+
+      * **reaction** (*cobra.Reaction*) -- The reaction currently
+        minimized/maximized.
+
+      * **solution** (*bool**, **optional*) -- Whether to return the
+        entire solution or only the minimum/maximum for *reaction*
+        (default False).
+
+      * **zero_cutoff** (*positive float**, **optional*) -- Cutoff
+        used for loop removal. Fluxes with an absolute value smaller
+        than *zero_cutoff* are considered to be zero. The default is
+        to use *model.tolerance* (default None).
+
+   Returns:
+      **single float or dict of {str** -- Returns the
+      minimized/maximized flux through *reaction* if *solution* is
+      False. Otherwise, returns a loopless flux solution object
+      containing the minimum/maximum flux for *reaction*.
+
+   Return type:
+      float}
+
+cobra.flux_analysis.loopless.loopless_solution(model: Model, fluxes: Dict[str, float] | None = None) -> Solution
+
+   Convert an existing solution to a loopless one.
+
+   Removes as many loops as possible (see Notes).
+
+   Uses the method from CycleFreeFlux >>[1]_<< and is much faster than
+   *add_loopless* and should therefore be the preferred option to get
+   loopless flux distributions.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to which to add the
+        constraints.
+
+      * **fluxes** (*dict** of **{str**, **float}**, **optional*) -- A
+        dictionary having keys as reaction IDs and values as their
+        flux values. If not None will use the provided flux values to
+        obtain a close loopless solution (default None).
+
+   Returns:
+      A solution object containing the fluxes with the least amount of
+      loops possible or None if the optimization failed (usually
+      happening if the flux distribution in *fluxes* is infeasible).
+
+   Return type:
+      cobra.Solution
+
+   -[ Notes ]-
+
+   The returned flux solution has the following properties:
+
+   * It contains the minimal number of loops possible and no loops at
+     all if all flux bounds include zero and the objective is not in a
+     cycle.
+
+   * It has the same objective value as the original flux solution and
+     assumes that the objective does not participate in a cycle (which
+     is usually true since it consumes metabolites).
+
+   * It has the same exact exchange fluxes as the previous solution.
+
+   * All fluxes have the same sign (flow in the same direction) as the
+     previous solution.
+
+   When providing fluxes to the method, please note that those have to
+   come from the exact same model that you provided, meaning that no
+   bounds or coefficients have been changed, and the optimum has
+   remained the same.
+
+   -[ References ]-
+
+   [1] CycleFreeFlux: efficient removal of thermodynamically
+       infeasible loops from flux distributions. Desouki AA, Jarre F,
+       Gelius-Dietrich G, Lercher MJ. Bioinformatics. 2015 Jul
+       1;31(13):2159-65. doi: 10.1093/bioinformatics/btv096.
+
+
+cobra.flux_analysis.moma module
+===============================
+
+Provide minimization of metabolic adjustment (MOMA).
+
+cobra.flux_analysis.moma.add_moma(model: Model, solution: Solution | None = None, linear: bool = True) -> None
+
+   Add MOMA constraints and objective representing to the *model*.
+
+   This adds variables and constraints for the minimization of
+   metabolic adjustment (MOMA) to the model.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to add MOMA constraints
+        and objective to.
+
+      * **solution** (*cobra.Solution**, **optional*) -- A previous
+        solution to use as a reference. If no solution is given, one
+        will be computed using pFBA (default None).
+
+      * **linear** (*bool**, **optional*) -- Whether to use the linear
+        MOMA formulation or not (default True).
+
+   -[ Notes ]-
+
+   In the original MOMA >>[1]_<< specification, one looks for the flux
+   distribution of the deletion (v^d) closest to the fluxes without
+   the deletion (v). In math this means:
+
+   minimize: sum_i (v^d_i - v_i)^2 s.t.    : Sv^d = 0
+
+      lb_i le v^d_i le ub_i
+
+   Here, we use a variable transformation v^t := v^d_i - v_i.
+   Substituting and using the fact that Sv = 0 gives:
+
+   minimize: sum_i (v^t_i)^2 s.t.    : Sv^d = 0
+
+      v^t = v^d_i - v_i lb_i le v^d_i le ub_i
+
+   So, basically we just re-center the flux space at the old solution
+   and then find the flux distribution closest to the new zero
+   (center). This is the same strategy as used in cameo.
+
+   In the case of linear MOMA >>[2]_<<, we instead minimize sum_i
+   abs(v^t_i). The linear MOMA is typically significantly faster.
+   Also, quadratic MOMA tends to give flux distributions in which all
+   fluxes deviate from the reference fluxes a little bit whereas
+   linear MOMA tends to give flux distributions where the majority of
+   fluxes are the same reference with few fluxes deviating a lot
+   (typical effect of L2 norm vs L1 norm).
+
+   The former objective function is saved in the optlang solver
+   interface as ""moma_old_objective"" and this can be used to
+   immediately extract the value of the former objective after MOMA
+   optimization.
+
+   See also:
+
+     "pfba"
+        parsimonious FBA
+
+   -[ References ]-
+
+   [1] Segrè, Daniel, Dennis Vitkup, and George M. Church. “Analysis
+       of Optimality in Natural and Perturbed Metabolic Networks.”
+       Proceedings of the National Academy of Sciences 99, no. 23
+       (November 12, 2002): 15112.
+       https://doi.org/10.1073/pnas.232349399.
+
+   [2] Becker, Scott A, Adam M Feist, Monica L Mo, Gregory Hannum,
+       Bernhard Ø Palsson, and Markus J Herrgard. “Quantitative
+       Prediction of Cellular Metabolism with Constraint-Based Models:
+       The COBRA Toolbox.” Nature Protocols 2 (March 29, 2007): 727.
+
+cobra.flux_analysis.moma.moma(model: Model, solution: Solution | None = None, linear: bool = True) -> Solution
+
+   Compute a single solution based on (linear) MOMA.
+
+   Compute a new flux distribution that is at a minimal distance to a
+   previous reference solution *solution*. Minimization of metabolic
+   adjustment (MOMA) is generally used to assess the impact of knock-
+   outs. Thus, the typical usage is to provide a wild-type flux
+   distribution as reference and a model in knock-out state.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model state to compute a
+        MOMA-based solution for.
+
+      * **solution** (*cobra.Solution**, **optional*) -- A (wild-type)
+        reference solution (default None).
+
+      * **linear** (*bool**, **optional*) -- Whether to use the linear
+        MOMA formulation or not (default True).
+
+   Returns:
+      A flux distribution that is at a minimal distance compared to
+      the reference solution.
+
+   Return type:
+      cobra.Solution
+
+   See also:
+
+     "add_moma"
+        add MOMA constraints and objective
+
+
+cobra.flux_analysis.parsimonious module
+=======================================
+
+Provide parsimonious FBA implementation.
+
+cobra.flux_analysis.parsimonious.add_pfba(model: Model, objective: Dict | Objective | None = None, fraction_of_optimum: float = 1.0) -> None
+
+   Add pFBA objective to the *model*.
+
+   This adds objective to minimize the summed flux of all reactions to
+   the current objective.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to add the objective
+        to.
+
+      * **objective** (*dict** or **cobra.Model.objective**,
+        **optional*) -- A desired objective to use during optimization
+        in addition to the pFBA objective. Dictionaries (reaction as
+        key, coefficient as value) can be used for linear objectives
+        (default None).
+
+      * **fraction_of_optimum** (*float**, **optional*) -- Fraction of
+        optimum which must be maintained. The original objective
+        reaction is constrained to be greater than maximal value times
+        the *fraction_of_optimum*.
+
+   See also: "pfba"
+
+cobra.flux_analysis.parsimonious.optimize_minimal_flux(*args, **kwargs) -> Callable[[Model, float, Dict | Objective, List[Reaction]], Solution]
+
+   Perform basic pFBA to minimize total flux.
+
+   Deprecated since version 0.6.0a4: *optimize_minimal_flux* will be
+   removed in cobrapy 1.0.0, it is replaced by *pfba*.
+
+   Parameters:
+      * ***args** (*Any*) -- Non-keyword variable-length arguments.
+
+      * ****kwargs** (*Any*) -- Keyword-only variable-length
+        arguments.
+
+   Return type:
+      A function performing the parsimonious FBA.
+
+cobra.flux_analysis.parsimonious.pfba(model: Model, fraction_of_optimum: float = 1.0, objective: Dict | Objective | None = None, reactions: List[Reaction] | None = None) -> Solution
+
+   Perform basic pFBA (parsimonious Enzyme Usage Flux Balance
+   Analysis).
+
+   pFBA [1] adds the minimization of all fluxes the the objective of
+   the model. This approach is motivated by the idea that high fluxes
+   have a higher enzyme turn-over and that since producing enzymes is
+   costly, the cell will try to minimize overall flux while still
+   maximizing the original objective function, e.g. the growth rate.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to perform pFBA on.
+
+      * **fraction_of_optimum** (*float**, **optional*) -- The
+        fraction of optimum which must be maintained. The original
+        objective reaction is constrained to be greater than maximal
+        value times the *fraction_of_optimum* (default 1.0).
+
+      * **objective** (*dict** or **cobra.Model.objective**,
+        **optional*) -- A desired objective to use during optimization
+        in addition to the pFBA objective. Dictionaries (reaction as
+        key, coefficient as value) can be used for linear objectives
+        (default None).
+
+      * **reactions** (*list** of **cobra.Reaction**, **optional*) --
+        List of cobra.Reaction. Implies *return_frame* to be true.
+        Only return fluxes for the given reactions. Faster than
+        fetching all fluxes if only a few are needed (default None).
+
+   Returns:
+      The solution object to the optimized model with pFBA constraints
+      added.
+
+   Return type:
+      cobra.Solution
+
+   -[ References ]-
+
+   [1] Lewis, N. E., Hixson, K. K., Conrad, T. M., Lerman, J. A.,
+       Charusanti, P., Polpitiya, A. D., Palsson, B. O. (2010). Omic
+       data from evolved E. coli are consistent with computed optimal
+       growth from genome-scale models. Molecular Systems Biology, 6,
+       390. doi:10.1038/msb.2010.47
+
+
+cobra.flux_analysis.phenotype_phase_plane module
+================================================
+
+Provide functions for phenotype phase plane analysis.
+
+cobra.flux_analysis.phenotype_phase_plane.production_envelope(model: Model, reactions: List[Reaction], objective: Dict | Objective | None = None, carbon_sources: List[Reaction] | None = None, points: int = 20, threshold: float | None = None) -> DataFrame
+
+   Calculate the objective value conditioned on all flux combinations.
+
+   The production envelope can be used to analyze a model's ability to
+   produce a given compound conditional on the fluxes for another set
+   of reactions, such as the uptake rates. The model is alternately
+   optimized with respect to minimizing and maximizing the objective
+   and the obtained fluxes are recorded. Ranges to compute production
+   is set to the effective bounds, i.e., the minimum / maximum fluxes
+   that can be obtained given current reaction bounds.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to compute the
+        production envelope for.
+
+      * **reactions** (*list** of **cobra.Reaction*) -- A list of
+        reaction objects.
+
+      * **objective** (*dict** or **cobra.Model.objective**,
+        **optional*) -- The objective (reaction) to use for the
+        production envelope. Use the model's current objective if left
+        missing (default None).
+
+      * **carbon_sources** (*list** of **cobra.Reaction**,
+        **optional*) -- One or more reactions that are the source of
+        carbon for computing carbon (mol carbon in output over mol
+        carbon in input) and mass yield (gram product over gram
+        output). Only objectives with a carbon containing input and
+        output metabolite is supported. Will identify active carbon
+        sources in the medium if none are specified (default None).
+
+      * **points** (*int**, **optional*) -- The number of points to
+        calculate production for (default 20).
+
+      * **threshold** (*float**, **optional*) -- A cut-off under which
+        flux values will be considered to be zero. If not specified,
+        it defaults to *model.tolerance* (default None).
+
+   Returns:
+      A DataFrame with fixed columns as: - carbon_source        :
+      identifiers of carbon exchange reactions - flux_maximum
+      : maximum objective flux - flux_minimum         : minimum
+      objective flux - carbon_yield_maximum : maximum yield of a
+      carbon source - carbon_yield_minimum : minimum yield of a carbon
+      source - mass_yield_maximum   : maximum mass yield of a carbon
+      source - mass_yield_minimum   : minimum mass yield of a carbon
+      source
+
+      and variable columns (for each input *reactions*) as: -
+      reaction_id          : flux at each given point
+
+   Return type:
+      pandas.DataFrame
+
+   Raises:
+      **ValueError** -- If model's objective is comprised of multiple
+      reactions.
+
+   -[ Examples ]-
+
+   >>> import cobra.io
+   >>> from cobra.flux_analysis import production_envelope
+   >>> model = cobra.io.load_model("textbook")
+   >>> production_envelope(model, ["EX_glc__D_e", "EX_o2_e"])
+       carbon_source  flux_minimum  carbon_yield_minimum  mass_yield_minimum ...
+   0     EX_glc__D_e           0.0                   0.0                 NaN ...
+   1     EX_glc__D_e           0.0                   0.0                 NaN ...
+   2     EX_glc__D_e           0.0                   0.0                 NaN ...
+   3     EX_glc__D_e           0.0                   0.0                 NaN ...
+   4     EX_glc__D_e           0.0                   0.0                 NaN ...
+   ..            ...           ...                   ...                 ... ...
+   395   EX_glc__D_e           NaN                   NaN                 NaN ...
+   396   EX_glc__D_e           NaN                   NaN                 NaN ...
+   397   EX_glc__D_e           NaN                   NaN                 NaN ...
+   398   EX_glc__D_e           NaN                   NaN                 NaN ...
+   399   EX_glc__D_e           NaN                   NaN                 NaN ...
+
+   [400 rows x 9 columns]
+
+
+cobra.flux_analysis.reaction module
+===================================
+
+Provide functions for analyzing / creating objective functions.
+
+cobra.flux_analysis.reaction.assess(model: Model, reaction: Reaction | str, flux_coefficient_cutoff: float = 0.001, solver: str = None) -> bool | Dict
+
+   Assess production capacity.
+
+   Assess the capacity of the *model* to produce the precursors for
+   the *reaction* and absorb the production of the *reaction* while
+   the *reaction* is operating at, or above, the specified
+   *flux_coefficient_cutoff*.
+
+   Deprecated since version 0.10.0a1: *solver* argument will be
+   removed in cobrapy 1.0.0, it is replaced by globally setting the
+   solver via cobra.Configuration .
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to assess
+        production capacity for.
+
+      * **reaction** (*str** or **cobra.Reaction*) -- The reaction to
+        assess.
+
+      * **flux_coefficient_cutoff** (*float**, **optional*) -- The
+        minimum flux that reaction must carry to be considered active
+        (default 0.001).
+
+      * **solver** (*str**, **optional*) -- The solver name. If None,
+        the default solver will be used (default None).
+
+   Returns:
+      True if the model can produce the precursors and absorb the
+      products for the reaction operating at, or above,
+      *flux_coefficient_cutoff*. Otherwise, a dictionary of
+      {'precursor': Status, 'product': Status}, where 'Status' is the
+      results from *assess_precursors* and *assess_products*,
+      respectively.
+
+   Return type:
+      bool or dict
+
+cobra.flux_analysis.reaction.assess_component(model: Model, reaction: Reaction | str, side: str, flux_coefficient_cutoff: float = 0.001, solver: str = None) -> bool | Dict
+
+   Assess production capacity of components.
+
+   Assess the ability of the *model* to provide sufficient precursors,
+   or absorb products, for a *reaction* operating at, or beyond, the
+   specified *flux_coefficient_cutoff*.
+
+   Deprecated since version 0.10.0a1: *solver* argument will be
+   removed in cobrapy 1.0.0, it is replaced by globally setting the
+   solver via cobra.Configuration .
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to assess
+        production capacity for.
+
+      * **reaction** (*str** or **cobra.Reaction*) -- The reaction to
+        assess.
+
+      * **side** (*{"products"**, **"reactants"}*) -- The side of the
+        reaction to assess.
+
+      * **flux_coefficient_cutoff** (*float**, **optional*) -- The
+        minimum flux that reaction must carry to be considered active
+        (default 0.001).
+
+      * **solver** (*str**, **optional*) -- The solver name. If None,
+        the default solver will be used (default None).
+
+   Returns:
+      True if the precursors can be simultaneously produced at the
+      specified cutoff. False, if the model has the capacity to
+      produce each individual precursor at the specified threshold
+      but not all precursors at the required level simultaneously.
+      Otherwise, a dictionary of the required and the produced fluxes
+      for each reactant that is not produced in sufficient quantities.
+
+   Return type:
+      bool or dict
+
+cobra.flux_analysis.reaction.assess_precursors(model: Model, reaction: Reaction, flux_coefficient_cutoff: float = 0.001, solver: str = None) -> bool | Dict
+
+   Assess production capacity of precursors.
+
+   Assess the ability of the model to provide sufficient precursors
+   for a reaction operating at, or beyond, the
+   *flux_coefficient_cutoff*.
+
+   Deprecated since version 0.7.0: *assess_precursors* will be removed
+   in cobrapy 1.0.0, it is replaced by *assess_component*.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to assess
+        production capacity for.
+
+      * **reaction** (*str** or **cobra.Reaction*) -- The reaction to
+        assess.
+
+      * **flux_coefficient_cutoff** (*float**, **optional*) -- The
+        minimum flux that reaction must carry to be considered active
+        (default 0.001).
+
+      * **solver** (*str**, **optional*) -- The solver name. If None,
+        the default solver will be used (default None).
+
+   Returns:
+      True if the precursors can be simultaneously produced at the
+      specified cutoff. False, if the model has the capacity to
+      produce each individual precursor at the specified threshold but
+      not all precursors at the required level simultaneously.
+      Otherwise, a dictionary of the required and the produced fluxes
+      for each reactant that is not produced in sufficient quantities.
+
+   Return type:
+      bool or dict
+
+cobra.flux_analysis.reaction.assess_products(model: Model, reaction: Reaction, flux_coefficient_cutoff: float = 0.001, solver: str = None) -> bool | Dict
+
+   Assesses absorption capacity of products.
+
+   Assess the ability of the model to to absorb the products of a
+   reaction at a given flux rate. Useful for identifying which
+   components might be blocking a reaction from achieving a specific
+   flux rate.
+
+   Deprecated since version 0.7.0: *assess_products* will be removed
+   in cobrapy 1.0.0, it is replaced by *assess_component*.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to assess
+        production capacity for.
+
+      * **reaction** (*str** or **cobra.Reaction*) -- The reaction to
+        assess.
+
+      * **flux_coefficient_cutoff** (*float**, **optional*) -- The
+        minimum flux that reaction must carry to be considered active
+        (default 0.001).
+
+      * **solver** (*str**, **optional*) -- The solver name. If None,
+        the default solver will be used (default None).
+
+   Returns:
+      True if the model has the capacity to absorb all the reaction
+      products being simultaneously given the specified cutoff. False,
+      if the model has the capacity to absorb each individual product
+      but not all products at the required level simultaneously.
+      Otherwise, a dictionary of the required and the capacity fluxes
+      for each product that is not absorbed in sufficient quantities.
+
+   Return type:
+      bool or dict
+
+
+cobra.flux_analysis.room module
+===============================
+
+Provide regulatory on/off minimization (ROOM).
+
+cobra.flux_analysis.room.add_room(model: Model, solution: Solution | None = None, linear: bool = False, delta: float = 0.03, epsilon: float = 0.001) -> None
+
+   Add constraints and objective for ROOM.
+
+   This function adds variables and constraints for applying
+   regulatory on/off minimization (ROOM) to the model.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to add ROOM constraints
+        and objective to.
+
+      * **solution** (*cobra.Solution**, **optional*) -- A previous
+        solution to use as a reference. If no solution is given, one
+        will be computed using pFBA (default None).
+
+      * **linear** (*bool**, **optional*) -- Whether to use the linear
+        ROOM formulation or not (default False).
+
+      * **delta** (*float**, **optional*) -- The relative tolerance
+        range which is additive in nature (default 0.03).
+
+      * **epsilon** (*float**, **optional*) -- The absolute range of
+        tolerance which is multiplicative (default 0.001).
+
+   -[ Notes ]-
+
+   The formulation used here is the same as stated in the original
+   paper >>[1]_<<. The mathematical expression is given below:
+
+   minimize: sum_{i=1}^m y^i s.t.    : Sv = 0
+
+      v_min le v le v_max v_j = 0 j in A for 1 le i le m v_i -
+      y_i(v_{max,i} - w_i^u) le w_i^u        (1) v_i - y_i(v_{min,i} -
+      w_i^l) le w_i^l        (2) y_i in {0,1}
+      (3) w_i^u = w_i + delta|w_i| + epsilon w_i^l = w_i - delta|w_i|
+      - epsilon
+
+   So, for the linear version of the ROOM , constraint (3) is relaxed
+   to 0 le y_i le 1.
+
+   See also:
+
+     "pfba"
+        parsimonious FBA
+
+   -[ References ]-
+
+   [1] Tomer Shlomi, Omer Berkman and Eytan Ruppin, "Regulatory on/off
+       minimization of metabolic flux changes after genetic
+       perturbations", PNAS 2005 102 (21) 7695-7700;
+       doi:10.1073/pnas.0406346102
+
+cobra.flux_analysis.room.room(model: Model, solution: Solution | None = None, linear: bool = False, delta: float = 0.03, epsilon: float = 0.001) -> Solution
+
+   Compute a solution based on regulatory on/off minimization (ROOM).
+
+   Compute a new flux distribution that minimizes the number of active
+   reactions needed to accommodate a previous reference solution.
+   Regulatory on/off minimization (ROOM) is generally used to assess
+   the impact of knock-outs. Thus, the typical usage is to provide a
+   wild-type flux distribution as reference and a *model* in knock-out
+   state.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model state to compute a
+        ROOM-based solution for.
+
+      * **solution** (*cobra.Solution**, **optional*) -- A (wild-type)
+        reference solution (default None).
+
+      * **linear** (*bool**, **optional*) -- Whether to use the linear
+        ROOM formulation or not (default False).
+
+      * **delta** (*float**, **optional*) -- The relative tolerance
+        range (additive) (default 0.03).
+
+      * **epsilon** (*float**, **optional*) -- The absolute tolerance
+        range (multiplicative) (default 0.001).
+
+   Returns:
+      A flux distribution with minimal active reaction changes
+      compared to the reference.
+
+   Return type:
+      cobra.Solution
+
+   See also:
+
+     "add_room"
+        add ROOM constraints and objective
+
+
+cobra.flux_analysis.variability module
+======================================
+
+Provide variability based methods such as flux variability or gene
+essentiality.
+
+cobra.flux_analysis.variability.find_blocked_reactions(model: Model, reaction_list: List[Reaction | str] | None = None, zero_cutoff: float | None = None, open_exchanges: bool = False, processes: int | None = None) -> List[Reaction]
+
+   Find reactions that cannot carry any flux.
+
+   The question whether or not a reaction is blocked is highly
+   dependent on the current exchange reaction settings for a COBRA
+   model. Hence an argument is provided to open all exchange
+   reactions.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to analyze.
+
+      * **reaction_list** (*list** of **cobra.Reaction** or **str**,
+        **optional*) -- List of reactions to consider, the default
+        includes all model reactions (default None).
+
+      * **zero_cutoff** (*float**, **optional*) -- Flux value which is
+        considered to effectively be zero. The default is set to use
+        *model.tolerance* (default None).
+
+      * **open_exchanges** (*bool**, **optional*) -- Whether or not to
+        open all exchange reactions to very high flux ranges (default
+        False).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. Can speed up the computations if the number
+        of reactions is large. If not explicitly passed, it will be
+        set from the global configuration singleton (default None).
+
+   Returns:
+      List with the identifiers of blocked reactions.
+
+   Return type:
+      list of cobra.Reaction
+
+   -[ Notes ]-
+
+   Sink and demand reactions are left untouched. Please modify them
+   manually.
+
+cobra.flux_analysis.variability.find_essential_genes(model: Model, threshold: float | None = None, processes: int | None = None) -> Set[Gene]
+
+   Return a set of essential genes.
+
+   A gene is considered essential if restricting the flux of all
+   reactions that depend on it to zero causes the objective, e.g., the
+   growth rate, to also be zero, below the threshold, or infeasible.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to find the essential
+        genes for.
+
+      * **threshold** (*float**, **optional*) -- Minimal objective
+        flux to be considered viable. By default this is 1% of the
+        maximal objective (default None).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. Can speed up the computations if the number
+        of knockouts to perform is large. If not explicitly passed, it
+        will be set from the global configuration singleton (default
+        None).
+
+   Returns:
+      Set of essential genes.
+
+   Return type:
+      set of cobra.Gene
+
+cobra.flux_analysis.variability.find_essential_reactions(model: Model, threshold: float | None = None, processes: int | None = None) -> Set[Reaction]
+
+   Return a set of essential reactions.
+
+   A reaction is considered essential if restricting its flux to zero
+   causes the objective, e.g., the growth rate, to also be zero, below
+   the threshold, or infeasible.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to find the essential
+        reactions for.
+
+      * **threshold** (*float**, **optional*) -- Minimal objective
+        flux to be considered viable. By default this is 1% of the
+        maximal objective (default None).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. Can speed up the computations if the number
+        of knockouts to perform is large. If not explicitly passed, it
+        will be set from the global configuration singleton (default
+        None).
+
+   Returns:
+      Set of essential reactions.
+
+   Return type:
+      set of cobra.Reaction
+
+cobra.flux_analysis.variability.flux_variability_analysis(model: Model, reaction_list: List[Reaction | str] | None = None, loopless: str | None | bool = None, fraction_of_optimum: float = 1.0, pfba_factor: float | None = None, processes: int | None = None) -> DataFrame
+
+   Determine the minimum and maximum flux value for each reaction.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model for which to run the
+        analysis. It will *not* be modified.
+
+      * **reaction_list** (*list** of **cobra.Reaction** or **str**,
+        **optional*) -- The reactions for which to obtain min/max
+        fluxes. If None will use all reactions in the model (default
+        None).
+
+      * **loopless** (*str**, **"fastSNP"** or **"cycleFreeFlux"**,
+        **optional*) -- If this value is set, only loopless solutions
+        will be returned. Boolean values are deprecated. Provided
+        value means the algorithm to constrain the model to loopless
+        solutions. Please also refer to the notes (default None).
+
+      * **fraction_of_optimum** (*float**, **optional*) -- Must be <=
+        1.0. Requires that the objective value is at least the
+        fraction times maximum objective value. A value of 0.85 for
+        instance means that the objective has to be at least at 85%
+        percent of its maximum (default 1.0).
+
+      * **pfba_factor** (*float**, **optional*) -- Add an additional
+        constraint to the model that requires the total sum of
+        absolute fluxes must not be larger than this value times the
+        smallest possible sum of absolute fluxes, i.e., by setting the
+        value to 1.1 the total sum of absolute fluxes must not be more
+        than 10% larger than the pFBA solution. Since the pFBA
+        solution is the one that optimally minimizes the total flux
+        sum, the *pfba_factor* should, if set, be larger than one.
+        Setting this value may lead to more realistic predictions of
+        the effective flux bounds (default None).
+
+      * **processes** (*int**, **optional*) -- The number of parallel
+        processes to run. If not explicitly passed, will be set from
+        the global configuration singleton (default None).
+
+   Returns:
+      A data frame with reaction identifiers as the index and two
+      columns: - maximum: indicating the highest possible flux -
+      minimum: indicating the lowest possible flux
+
+   Return type:
+      pandas.DataFrame
+
+   -[ Notes ]-
+
+   This implements the fast version as described in >>[1]_<<. Please
+   note that the flux distribution containing all minimal/maximal
+   fluxes does not have to be a feasible solution for the model.
+   Fluxes are minimized/maximized individually and a single minimal
+   flux might require all others to be sub-optimal.
+
+   Using the loopless option will lead to a significant increase in
+   computation time (about a factor of 100 for large models).
+
+   If *loopless* is set to "fastSNP", the optimal loopless flux bounds
+   will be found by adding the loopless constraints to the model using
+   efficient Fast-SNP algorithm (see >>[2]_<<).
+
+   If *loopless* is set to "cycleFreeFlux", the loops removal
+   algorithm will be used (see >>[3]_<<). Note: this algorithm does
+   not guarantee to find optimal bounds.
+
+   -[ References ]-
+
+   [1] Computationally efficient flux variability analysis.
+       Gudmundsson S, Thiele I. BMC Bioinformatics. 2010 Sep
+       29;11:489. doi: 10.1186/1471-2105-11-489, PMID: 20920235
+
+   [2] Fast-SNP: a fast matrix pre-processing algorithm for efficient
+       loopless flux optimization of metabolic models. Saa PA, Nielsen
+       LK. Bioinformatics. 2016 Dec;32(24):3807–3814. doi:
+       10.1093/bioinformatics/btw555.
+
+   [3] CycleFreeFlux: efficient removal of thermodynamically
+       infeasible loops from flux distributions. Desouki AA, Jarre F,
+       Gelius-Dietrich G, Lercher MJ. Bioinformatics. 2015 Jul
+       1;31(13):2159-65. doi: 10.1093/bioinformatics/btv096.
+
+
+Module contents
+===============
+
+Provide functions related to Flux Analysis.

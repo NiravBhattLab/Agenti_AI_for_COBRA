@@ -1,0 +1,762 @@
+cobra.io package
+****************
+
+
+Subpackages
+===========
+
+* cobra.io.web package
+
+  * Submodules
+
+  * cobra.io.web.abstract_model_repository module
+
+    * "AbstractModelRepository"
+
+      * "AbstractModelRepository.name"
+
+      * "AbstractModelRepository.get_sbml()"
+
+      * "AbstractModelRepository.name"
+
+      * "AbstractModelRepository.url"
+
+  * cobra.io.web.bigg_models_repository module
+
+    * "BiGGModels"
+
+      * "BiGGModels.name"
+
+      * "BiGGModels.get_sbml()"
+
+      * "BiGGModels.name"
+
+  * cobra.io.web.biomodels_repository module
+
+    * "BioModels"
+
+      * "BioModels.name"
+
+      * "BioModels.get_sbml()"
+
+      * "BioModels.name"
+
+    * "BioModelsFile"
+
+      * "BioModelsFile.name"
+
+      * "BioModelsFile.size"
+
+    * "BioModelsFilesResponse"
+
+      * "BioModelsFilesResponse.main"
+
+  * cobra.io.web.cobrapy_repository module
+
+    * "Cobrapy"
+
+      * "Cobrapy.get_sbml()"
+
+      * "Cobrapy.name"
+
+  * cobra.io.web.load module
+
+    * "get_model_from_gzip_sbml()"
+
+    * "load_model()"
+
+  * Module contents
+
+
+Submodules
+==========
+
+
+cobra.io.dict module
+====================
+
+Provide functions for cobrapy objects to generic Python objects and
+vice-versa.
+
+cobra.io.dict.gene_from_dict(gene: Dict) -> Gene
+
+   Convert a dictionary to cobra Gene object.
+
+   Parameters:
+      **gene** (*dict*) -- The dictionary to convert to cobra.Gene .
+
+   Returns:
+      The converted cobra.Gene object.
+
+   Return type:
+      cobra.Gene
+
+   See also:
+
+     "_gene_to_dict"
+        Convert a cobra Gene object to a dictionary.
+
+cobra.io.dict.model_from_dict(obj: Dict) -> Model
+
+   Build a cobra Model from a dictionary.
+
+   Models stored in JSON are first formulated as a dictionary that can
+   be read to a cobra Model using this function.
+
+   Parameters:
+      **obj** (*dict*) -- A dictionary with keys: 'genes',
+      'compartments', 'id', 'metabolites', 'notes' and 'reactions';
+      where 'metabolites', 'genes' and 'metabolites' are in turn lists
+      of dictionaries holding all attributes to form the corresponding
+      object.
+
+   Returns:
+      The generated model.
+
+   Return type:
+      cobra.Model
+
+   Raises:
+      **ValueError** -- If *obj* has no 'reactions' attribute.
+
+   See also:
+
+     "model_to_dict"
+        Convert a cobra Model to a dictionary.
+
+cobra.io.dict.model_to_dict(model: Model, sort: bool = False) -> OrderedDict
+
+   Convert a cobra Model to a dictionary.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to reformulate as a
+        dict.
+
+      * **sort** (*bool**, **optional*) -- Whether to sort the
+        metabolites, reactions, and genes or maintain the order
+        defined in the model (default False).
+
+   Returns:
+      A dictionary with keys: 'genes', 'compartments', 'id',
+      'metabolites', 'notes' and 'reactions'; where 'metabolites',
+      'genes' and 'metabolites' are in turn lists of dictionaries
+      holding all attributes to form the corresponding object.
+
+   Return type:
+      OrderedDict
+
+   See also:
+
+     "model_from_dict"
+        Convert a dictionary to a cobra Model.
+
+
+cobra.io.json module
+====================
+
+Provide functions for I/O in JSON format.
+
+cobra.io.json.from_json(document: str) -> Model
+
+   Load a cobra model from a JSON string.
+
+   Parameters:
+      **document** (*str*) -- The JSON string representation of a
+      cobra model.
+
+   Returns:
+      The cobra model as interpreted from the JSON string.
+
+   Return type:
+      cobra.Model
+
+   See also:
+
+     "load_json_model"
+        Load directly from a file.
+
+cobra.io.json.load_json_model(filename: str | Path | IO) -> Model
+
+   Load a cobra model from a file in JSON format.
+
+   Parameters:
+      **filename** (*str** or **file-like*) -- File path or descriptor
+      that contains the JSON document describing the cobra model.
+
+   Returns:
+      The cobra model as represented in the JSON document.
+
+   Return type:
+      cobra.Model
+
+   See also:
+
+     "from_json"
+        Load from a JSON string.
+
+cobra.io.json.save_json_model(model: Model, filename: str | Path | IO, sort: bool = False, pretty: bool = False, **kwargs: Any) -> None
+
+   Write the cobra model to a file in JSON format.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to represent.
+
+      * **filename** (*str** or **file-like*) -- File path or
+        descriptor that the JSON representation should be written to.
+
+      * **sort** (*bool**, **optional*) -- Whether to sort the
+        metabolites, reactions, and genes or maintain the order
+        defined in the model (default False).
+
+      * **pretty** (*bool**, **optional*) -- Whether to format the
+        JSON more compactly (default) or in a more verbose but easier
+        to read fashion. Can be partially overwritten by the
+        ***kwargs* (default False).
+
+      * ****kwargs** (*Any*) -- Keyword arguments passed to
+        *json.dump*.
+
+   See also:
+
+     "to_json"
+        Return a string representation.
+
+     "json.dump"
+        Base function.
+
+cobra.io.json.to_json(model: Model, sort: bool = False, **kwargs: Any) -> str
+
+   Return the model as a JSON string.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to represent.
+
+      * **sort** (*bool**, **optional*) -- Whether to sort the
+        metabolites, reactions, and genes or maintain the order
+        defined in the model (default False).
+
+      * ****kwargs** (*Any*) -- Keyword arguments passed on to
+        *json.dumps*.
+
+   Returns:
+      JSON string representation of the cobra model.
+
+   Return type:
+      str
+
+   See also:
+
+     "save_json_model"
+        Write directly to a file.
+
+     "json.dumps"
+        Base function.
+
+
+cobra.io.mat module
+===================
+
+Provide functions for I/O in MATLAB (.mat) format.
+
+cobra.io.mat.annotations_to_mat(mat_dict: OrderedDict, annotation_list: List[Dict], d_replace: str = 'DICT_MET_REV') -> None
+
+   Process mat structure annotations in place.
+
+   Will process mat structured annotations and add them to a list of
+   new entities (metabolites, reactions, genes) in a format based on
+   identifiers.org.
+
+   Parameters:
+      * **mat_dict** (*OrderedDict*) -- An ordered dictionary having
+        model attributes as keys and their respective values
+        represented as arrays, as the values. Annotations will be
+        inserted into this OrderdDict.
+
+      * **annotation_list** (*list**[**Dict**]*) -- A list of cobra
+        annotations, in the form of a dictionary.
+
+      * **d_replace** (*str*) -- A string that points to the
+        dictionary of converstions between MATLAB and providers.
+        Default DICT_MET_REV (for metabolite).
+
+cobra.io.mat.create_mat_dict(model: Model) -> OrderedDict
+
+   Create a dictionary mapping model attributes to arrays.
+
+   Parameters:
+      **model** (*cobra.Model*) -- The model to create dictionary for.
+
+   Returns:
+      The ordered dictionary having model attributes as keys and their
+      respective values represented as arrays, as the values.
+
+   Return type:
+      OrderedDict
+
+cobra.io.mat.from_mat_struct(mat_struct: ndarray, model_id: str | None = None, inf: float = inf) -> Model
+
+   Create a model from the cobratoolbox struct.
+
+   Parameters:
+      * **mat_struct** (*numpy.ndarray*) -- The *numpy.ndarray* that
+        most likely contains the model, being chosen by
+        load_matlab_file after loading the matlab structure via
+        scipy_io.loadmat.
+
+      * **model_id** (*str**, **optional*) -- The ID of the model
+        generated. If None, will try to look for ID in model's
+        description. If multiple IDs are found, the first one is used.
+        If no IDs are found, will use 'imported_model' (default None).
+
+      * **inf** (*float**, **optional*) -- The value to use for
+        infinite bounds. Some solvers do not handle infinite values so
+        for using those, set this to a high numeric value (default
+        *numpy.inf*).
+
+   Returns:
+      The model as represented in .mat file.
+
+   Return type:
+      cobra.Model
+
+cobra.io.mat.load_matlab_model(infile_path: str | Path | IO, variable_name: str | None = None, inf: float = inf) -> Model
+
+   Load a cobra model stored as a .mat file.
+
+   Parameters:
+      * **infile_path** (*str** or **Path** or **filehandle*) -- File
+        path or descriptor of the .mat file describing the cobra
+        model.
+
+      * **variable_name** (*str**, **optional*) -- The variable name
+        of the model in the .mat file. If None, then the first MATLAB
+        variable which looks like a COBRA model will be used (default
+        None).
+
+      * **inf** (*float**, **optional*) -- The value to use for
+        infinite bounds. Some solvers do not handle infinite values so
+        for using those, set this to a high numeric value (default
+        *numpy.inf*).
+
+   Returns:
+      The cobra model as represented in the .mat file.
+
+   Return type:
+      cobra.Model
+
+   Raises:
+      * **ImportError** -- If scipy is not found in the Python
+        environment.
+
+      * **IOError** -- If no COBRA model is found in the .mat file.
+
+cobra.io.mat.mat_parse_annotations(target_list: List[Object], mat_struct: ndarray, d_replace: str = 'DICT_MET') -> None
+
+   Process mat structure annotations in place.
+
+   Will process mat structured annotations and add them to a list of
+   new entities (metabolites, reactions, genes) in a format based on
+   identifiers.org.
+
+   Parameters:
+      * **target_list** (*list**[**cobra.Object**]*) -- A list of
+        cobra objects, including metabolites, reactions or genes. The
+        annotations will be added to these lists.
+
+      * **mat_struct** (*np.ndarray*) -- A darray that includes the
+        data imported from matlab file.
+
+      * **d_replace** (*str*) -- A string that points to the
+        dictionary of converstions between MATLAB and providers.
+        Default DICT_MET (for metabolite).
+
+cobra.io.mat.mat_parse_notes(target_list: List[Object], mat_struct: ndarray, d_replace: str = 'DICT_REACTION_NOTES') -> None
+
+   Process mat structure notes in place.
+
+   Will process mat structured notes and add them to a list of new
+   entities (metabolites, reactions, genes) in a format based on
+   identifiers.org.
+
+   Parameters:
+      * **target_list** (*list**[**cobra.Object**]*) -- A list of
+        cobra objects, including metabolites, reactions or genes. The
+        notes will be added to these lists.
+
+      * **mat_struct** (*np.ndarray*) -- A darray that includes the
+        data imported from matlab file.
+
+      * **d_replace** (*str*) -- A string that points to the
+        dictionary of converstions between MATLAB and notes. Default
+        DICT_REACTION_NOTES (for reactions).
+
+cobra.io.mat.notes_to_mat(mat_dict: OrderedDict, note_list: List[Dict], d_replace: str = 'DICT_MET_REV') -> None
+
+   Process mat structure notes in place.
+
+   Will process mat structured annotations and add them to a list of
+   new entities (metabolites, reactions, genes) in a format based on
+   identifiers.org.
+
+   Parameters:
+      * **mat_dict** (*OrderedDict*) -- An ordered dictionary having
+        model attributes as keys and their respective values
+        represented as arrays, as the values. Annotations will be
+        inserted into this OrderdDict.
+
+      * **note_list** (*list**[**Dict**]*) -- A list of cobra
+        annotations, in the form of a dictionary.
+
+      * **d_replace** (*str*) -- A string that points to the
+        dictionary of converstions between MATLAB and providers.
+        Default DICT_MET_REV (for metabolite).
+
+cobra.io.mat.save_matlab_model(model: Model, file_name: str | Path | IO, varname: str | None = None) -> None
+
+   Save the cobra model as a .mat file.
+
+   This .mat file can be used directly in cobratoolbox.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to represent.
+
+      * **file_name** (*str** or **file-like** or **Path*) -- File
+        path or descriptor that the MATLAB representation should be
+        written to.
+
+      * **varname** (*str**, **optional*) -- The name of the variable
+        within the MATLAB workspace. Model ID is used if available,
+        else 'exported_model' is used (default None).
+
+
+cobra.io.sbml module
+====================
+
+SBML import and export using python-libsbml.
+
+* The SBML importer supports all versions of SBML and the fbc package.
+
+* The SBML exporter writes SBML L3 models.
+
+* Annotation information is stored on the cobrapy objects
+
+* Information from the group package is read
+
+Parsing of fbc models was implemented as efficient as possible,
+whereas (discouraged) fallback solutions are not optimized for
+efficiency.
+
+Notes are only supported in a minimal way relevant for constraint-
+based models. I.e., structured information from notes in the form
+
+   <p>key: value</p>
+
+is read into the Object.notes dictionary when reading SBML files. On
+writing the Object.notes dictionary is serialized to the SBML notes
+information.
+
+Annotations are read in the Object.annotation fields.
+
+Some SBML related issues are still open, please refer to the
+respective issue: - update annotation format and support qualifiers
+(depends on decision
+
+   for new annotation format;
+   https://github.com/opencobra/cobrapy/issues/684)
+
+* write compartment annotations and notes (depends on updated first-
+  class
+     compartments; see
+     https://github.com/opencobra/cobrapy/issues/760)
+
+* support compression on file handles (depends on solution for
+     https://github.com/opencobra/cobrapy/issues/812)
+
+exception cobra.io.sbml.CobraSBMLError
+
+   Bases: "Exception"
+
+   SBML error class.
+
+class cobra.io.sbml.Unit(kind, scale, multiplier, exponent)
+
+   Bases: "tuple"
+
+   exponent
+
+      Alias for field number 3
+
+   kind
+
+      Alias for field number 0
+
+   multiplier
+
+      Alias for field number 2
+
+   scale
+
+      Alias for field number 1
+
+cobra.io.sbml.read_sbml_model(filename: str | IO | Path, number: Type = <class 'float'>, f_replace: dict = {'F_GENE': <function _f_gene>, 'F_GENE_REV': <function _f_gene_rev>, 'F_GROUP': <function _f_group>, 'F_GROUP_REV': <function _f_group_rev>, 'F_REACTION': <function _f_reaction>, 'F_REACTION_REV': <function _f_reaction_rev>, 'F_SPECIE': <function _f_specie>, 'F_SPECIE_REV': <function _f_specie_rev>}, **kwargs) -> Model
+
+   Read SBML model from given filename.
+
+   If the given filename ends with the suffix ''.gz'' (for example,
+   ''myfile.xml.gz'),' the file is assumed to be compressed in gzip
+   format and will be automatically decompressed upon reading.
+   Similarly, if the given filename ends with ''.zip'' or ''.bz2','
+   the file is assumed to be compressed in zip or bzip2 format
+   (respectively).  Files whose names lack these suffixes will be read
+   uncompressed.  Note that if the file is in zip format but the
+   archive contains more than one file, only the first file in the
+   archive will be read and the rest ignored.
+
+   To read a gzip/zip file, libSBML needs to be configured and linked
+   with the zlib library at compile time.  It also needs to be linked
+   with the bzip2 library to read files in bzip2 format.  (Both of
+   these are the default configurations for libSBML.)
+
+   This function supports SBML with FBC-v1 and FBC-v2. FBC-v1 models
+   are converted to FBC-v2 models before reading.
+
+   The parser tries to fall back to information in notes dictionaries
+   if information is not available in the FBC packages, e.g., CHARGE,
+   FORMULA on species, or GENE_ASSOCIATION, SUBSYSTEM on reactions.
+
+   Parameters:
+      * **filename** (*path to SBML file**, or **SBML string**, or
+        **SBML file handle*) -- SBML which is read into cobra model
+
+      * **number** (*data type** of **stoichiometry: {float**,
+        **int}*) -- In which data type should the stoichiometry be
+        parsed.
+
+      * **f_replace** (*dict** of **replacement functions for id
+        replacement*) -- Dictionary of replacement functions for gene,
+        specie, and reaction. By default the following id changes are
+        performed on import: clip >>G_<< from genes, clip >>M_<< from
+        species, clip >>R_<< from reactions If no replacements should
+        be performed, set f_replace={}, None
+
+      * ****kwargs** -- Further keyword arguments are passed on to the
+        called function (_sbml_to_model)
+
+   Return type:
+      cobra.core.Model
+
+   Raises:
+      * **IOError if file not read** --
+
+      * **All other errors are wrapped around in a message pointing to
+        SBML validator.** --
+
+   -[ Notes ]-
+
+   Provided file handles cannot be opened in binary mode, i.e., use
+      with open(path, "r" as f):
+         read_sbml_model(f)
+
+   File handles to compressed files are not supported yet.
+
+cobra.io.sbml.validate_sbml_model(filename: str | IO | Path, check_model: bool = True, internal_consistency: bool = True, check_units_consistency: bool = False, check_modeling_practice: bool = False, **kwargs) -> Tuple[Model | None, dict]
+
+   Validate SBML model and returns the model along with a list of
+   errors.
+
+   Parameters:
+      * **filename** (*str** or **filehandle*) -- The filename (or
+        SBML string) of the SBML model to be validated.
+
+      * **check_model** (*boolean {True**, **False}**, **default
+        True*) -- Whether to also check some basic model properties
+        such as reaction boundaries and compartment formulas.
+
+      * **internal_consistency** (*bool**, **optional*) -- Check
+        internal consistency (default True).
+
+      * **check_units_consistency** (*bool**, **optional*) -- Check
+        consistency of units (default True).
+
+      * **check_modeling_practice** (*bool**, **optional*) -- Check
+        modeling practise (defualt True).
+
+      * ****kwargs** -- Further keyword arguments are passed on to the
+        called function (_sbml_to_model).
+
+   Returns:
+      * *(model, errors)*
+
+      * **model** ("Model" object) -- The cobra model if the file
+        could be read successfully or None otherwise.
+
+      * **errors** (*dict*) -- Warnings and errors grouped by their
+        respective types.
+
+   -[ Notes ]-
+
+   Errors and warnings are grouped based on their type. SBML_* types
+   are from the libsbml validator. COBRA_* types are from the cobrapy
+   SBML parser.
+
+cobra.io.sbml.write_sbml_model(cobra_model: Model, filename: str | IO | Path, f_replace: dict = {'F_GENE': <function _f_gene>, 'F_GENE_REV': <function _f_gene_rev>, 'F_GROUP': <function _f_group>, 'F_GROUP_REV': <function _f_group_rev>, 'F_REACTION': <function _f_reaction>, 'F_REACTION_REV': <function _f_reaction_rev>, 'F_SPECIE': <function _f_specie>, 'F_SPECIE_REV': <function _f_specie_rev>}, **kwargs) -> None
+
+   Write cobra model to filename.
+
+   The created model is SBML level 3 version 1 (L1V3) with fbc package
+   v2 (fbc-v2).
+
+   If the given filename ends with the suffix ".gz" (for example,
+   "myfile.xml.gz"), libSBML assumes the caller wants the file to be
+   written compressed in gzip format. Similarly, if the given filename
+   ends with ".zip" or ".bz2", libSBML assumes the caller wants the
+   file to be compressed in zip or bzip2 format (respectively). Files
+   whose names lack these suffixes will be written uncompressed.
+   Special considerations for the zip format: If the given filename
+   ends with ".zip", the file placed in the zip archive will have the
+   suffix ".xml" or ".sbml".  For example, the file in the zip archive
+   will be named "test.xml" if the given filename is "test.xml.zip" or
+   "test.zip". Similarly, the filename in the archive will be
+   "test.sbml" if the given filename is "test.sbml.zip".
+
+   Parameters:
+      * **cobra_model** (*cobra.core.Model*) -- Model instance which
+        is written to SBML
+
+      * **filename** (*string** or **filehandle*) -- path to which the
+        model is written
+
+      * **f_replace** (*dict*) -- dictionary of replacement functions
+        for id replacement
+
+      * ****kwargs** -- Further keyword arguments are passed on.
+
+
+cobra.io.yaml module
+====================
+
+Provide functions for I/O in YAML format.
+
+class cobra.io.yaml.CobraYAML(*, typ: List[Text] | Text | None = None, pure: Any = False, output: Any = None, plug_ins: Any = None)
+
+   Bases: "YAML"
+
+   Define custom subclass for YAML I/O.
+
+   dump(data: Dict, stream: TextIOBase | None = None, **kwargs: Any) -> str
+
+      Dump YAML data.
+
+      Parameters:
+         * **data** (*dict*) -- A dictionary representing the cobra
+           model and its components.
+
+         * **stream** (*TextIOBase**, **optional*) -- A text stream
+           object inheriting from *io.TextIOBase*. If None,
+           *ruamel.yaml.compat.StringIO* is used (default None).
+
+         * ****kwargs** (*Any*) -- Keyword arguments passed on to
+           *ruamel.yaml.main.YAML.dump*.
+
+      Returns:
+         YAML string representation of *data*.
+
+      Return type:
+         str
+
+cobra.io.yaml.from_yaml(document: str) -> Model
+
+   Load a cobra model from a YAML string.
+
+   Parameters:
+      **document** (*str*) -- The YAML string representation of a
+      cobra model.
+
+   Returns:
+      The cobra model as interpreted from the YAML document.
+
+   Return type:
+      cobra.Model
+
+   See also:
+
+     "load_yaml_model"
+        Load directly from a file.
+
+cobra.io.yaml.load_yaml_model(filename: str | Path) -> Model
+
+   Load a cobra model from a file in YAML format.
+
+   Parameters:
+      **filename** (*str** or **file-like*) -- File path or descriptor
+      that contains the YAML document describing the cobra model.
+
+   Returns:
+      The cobra model as represented in the YAML document.
+
+   Return type:
+      cobra.Model
+
+   See also:
+
+     "from_yaml"
+        Load from a string.
+
+cobra.io.yaml.save_yaml_model(model: Model, filename: str, sort: bool = False, **kwargs: Any) -> None
+
+   Write the cobra model to a file in YAML format.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to represent.
+
+      * **filename** (*str** or **file-like*) -- File path or
+        descriptor that the YAML representation should be written to.
+
+      * **sort** (*bool**, **optional*) -- Whether to sort the
+        metabolites, reactions, and genes or maintain the order
+        defined in the model (default False).
+
+      * ****kwargs** (*Any*) -- Keyword arguments passed to
+        *CobraYAML.dump*.
+
+   See also:
+
+     "to_yaml"
+        Return a string representation.
+
+     "ruamel.yaml.dump"
+        Base function.
+
+cobra.io.yaml.to_yaml(model: Model, sort: bool = False, **kwargs: Any) -> str
+
+   Return the model as a YAML string.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to represent.
+
+      * **sort** (*bool**, **optional*) -- Whether to sort the
+        metabolites, reactions, and genes or maintain the order
+        defined in the model (default False).
+
+      * ****kwargs** (*Any*) -- Keyword arguments passed on to
+        *CobraYAML.dump*.
+
+   Returns:
+      YAML string representation of the cobra model.
+
+   Return type:
+      str
+
+   See also:
+
+     "save_yaml_model"
+        Write directly to a file.
+
+     "ruamel.yaml.dump"
+        Base function.
+
+
+Module contents
+===============
+
+Provide functions for loading and saving metabolic models.

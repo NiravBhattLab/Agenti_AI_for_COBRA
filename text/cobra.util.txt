@@ -1,0 +1,633 @@
+cobra.util package
+******************
+
+
+Submodules
+==========
+
+
+cobra.util.array module
+=======================
+
+Helper functions for array operations and sampling.
+
+cobra.util.array.constraint_matrices(model: Model, array_type: str = 'dense', zero_tol: float = 1e-06) -> NamedTuple
+
+   Create a matrix representation of the problem.
+
+   This is used for alternative solution approaches that do not use
+   "optlang". The function will construct the equality matrix,
+   inequality matrix and bounds for the complete problem.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model from which to obtain
+        the LP problem.
+
+      * **array_type** (*{"dense"**, **"dok"**, **"lil"**,
+        **"DataFrame"}*) -- The type of array to construct. "dense"
+        will return a standard numpy.ndarray. "dok", or "lil" will
+        construct a sparse array using scipy of the corresponding
+        type. "DataFrame" will give a pandas.DataFrame with metabolite
+        as indices and reaction as columns.
+
+      * **zero_tol** (*float**, **optional*) -- The zero tolerance
+        used to judge whether two bounds are the same (default 1e-6).
+
+   Returns:
+      A named tuple consisting of 6 matrices and 2 vectors: -
+      "equalities" is a matrix *S* such that *S * vars = b*. It
+
+         includes a row for each constraint and one column for each
+         variable.
+
+      * "b" is the right side of the equality equation such that *S *
+        vars = b*.
+
+      * "inequalities" is a matrix M such that *lb <= M * vars <= ub*.
+        It contains a row for each inequality and as many columns as
+        variables.
+
+      * "bounds" is a compound matrix [lb ub] containing the lower and
+        upper bounds for the inequality constraints in M.
+
+      * "variable_fixed" is a boolean vector indicating whether the
+        variable at that index is fixed (*lower bound == upper_bound*)
+        and is thus bounded by an equality constraint.
+
+      * "variable_bounds" is a compound matrix *[lb ub]* containing
+        the lower and upper bounds for all variables.
+
+   Return type:
+      NamedTuple
+
+   -[ Notes ]-
+
+   To accomodate non-zero equalities, the problem will add the
+   variable "const_one" which is a variable that equals one.
+
+   Deprecated since version 0.18.1: "DataFrame" option for
+   *array_type* will be replaced with "frame" in future versions.
+
+cobra.util.array.create_stoichiometric_matrix(model: Model, array_type: str = 'dense', dtype: dtype | None = None) -> ndarray | dok_matrix | lil_matrix | DataFrame
+
+   Return a stoichiometric array representation of the given model.
+
+   The the columns represent the reactions and rows represent
+   metabolites. S[i,j] therefore contains the quantity of metabolite
+   *i* produced (negative for consumed) by reaction *j*.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model to construct the
+        matrix for.
+
+      * **array_type** (*{"dense"**, **"dok"**, **"lil"**,
+        **"DataFrame"}*) -- The type of array to construct. "dense"
+        will return a standard numpy.ndarray. "dok", or "lil" will
+        construct a sparse array using scipy of the corresponding
+        type. "DataFrame" will give a pandas.DataFrame with metabolite
+        as indices and reaction as columns.
+
+      * **dtype** (*numpy.dtype**, **optional*) -- The desired numpy
+        data type for the array (default numpy.float64).
+
+   Returns:
+      The stoichiometric matrix for the given model.
+
+   Return type:
+      matrix of class *dtype*
+
+   Raises:
+      * **ValueError** -- If sparse matrix is used and scipy is not
+        installed.
+
+      * **.. deprecated:** -- 0.18.1: "DataFrame" option for
+        *array_type* will be replaced with     "frame" in future
+        versions.
+
+cobra.util.array.nullspace(A: ndarray, atol: float = 1e-13, rtol: float = 0.0) -> ndarray
+
+   Compute an approximate basis for the nullspace of A.
+
+   The algorithm used by this function is based on the Singular Value
+   Decomposition (SVD) of *A*.
+
+   Parameters:
+      * **A** (*numpy.ndarray*) -- *A* should be at most 2-D. 1-D
+        array with length k will be treated as a 2-D with shape (1,
+        k).
+
+      * **atol** (*float**, **optional*) -- The absolute tolerance for
+        a zero singular value. Singular values smaller than *atol* are
+        considered to be zero (default 1e-13).
+
+      * **rtol** (*float**, **optional*) -- The relative tolerance.
+        Singular values less than *rtol * smax* are considered to be
+        zero, where *smax* is the largest singular value (default
+        0.0).
+
+   Returns:
+      If *A* is an array with shape (m, k), then *ns* will be an array
+      with shape (k, n), where *n* is the estimated dimension of the
+      nullspace of *A*.  The columns of *ns* are a basis for the
+      nullspace; each element in numpy.dot(A, ns) will be
+      approximately zero.
+
+   Return type:
+      numpy.ndarray
+
+   -[ Notes ]-
+
+   This is taken from the numpy cookbook.
+
+   If both *atol* and *rtol* are positive, the combined tolerance is
+   the maximum of the two; that is:
+
+      \mathtt{tol} = \max(\mathtt{atol}, \mathtt{rtol} *
+      \mathtt{smax})
+
+   Singular values smaller than *tol* are considered to be zero.
+
+
+cobra.util.context module
+=========================
+
+Context manager for the package.
+
+class cobra.util.context.HistoryManager(**kwargs)
+
+   Bases: "object"
+
+   Define a base context manager.
+
+   It records a list of actions to be taken at a later time. This is
+   used to implement context managers that allow temporary changes to
+   a *cobra.core.Model*.
+
+   reset() -> None
+
+      Trigger executions for all items in the stack in reverse order.
+
+   size() -> int
+
+      Calculate number of operations on the stack.
+
+cobra.util.context.get_context(obj: Object) -> HistoryManager | None
+
+   Search for a context manager.
+
+   Parameters:
+      **obj** (*cobra.Object*) -- The cobra.Object for which to search
+      context manager.
+
+   Returns:
+      HistoryManager instance, or None if no context manager is found.
+
+   Return type:
+      HistoryManager or None
+
+   Raises:
+      * **AttributeError** -- If no context manager is found.
+
+      * **IndexError** -- If no context manager is found.
+
+cobra.util.context.resettable(func: Callable[[Any], Any]) -> Callable[[Any], Any]
+
+   Simplify the context management of simple object attributes.
+
+   It gets the value of the attribute prior to setting it, and stores
+   a function to set the value to the old value in the
+   *cobra.util.HistoryManager*.
+
+   Parameters:
+      **func** (*callable*) -- The function to decorate.
+
+   Returns:
+      The decorated function.
+
+   Return type:
+      callable
+
+
+cobra.util.process_pool module
+==============================
+
+Provide a process pool with enhanced performance on Windows.
+
+class cobra.util.process_pool.ProcessPool(processes: int | None = None, initializer: Callable | None = None, initargs: Tuple = (), maxtasksperchild: int | None = None, **kwargs)
+
+   Bases: "object"
+
+   Define a process pool that handles the Windows platform specially.
+
+   close() -> None
+
+      Close the process pool.
+
+      Prevent any more tasks from being submitted to the pool. Once
+      all the tasks have been completed, the worker processes will
+      exit.
+
+
+cobra.util.solver module
+========================
+
+Additional helper functions for the optlang solvers.
+
+All functions integrate well with the context manager, meaning that
+all operations defined here are automatically reverted when used in a
+*with model:* block.
+
+The functions defined here together with the existing model functions
+should allow you to implement custom flux analysis methods with ease.
+
+class cobra.util.solver.Components(variable: Variable, upper_constraint: Constraint, lower_constraint: Constraint)
+
+   Bases: "NamedTuple"
+
+   Define an object for adding absolute expressions.
+
+   lower_constraint: Constraint
+
+      Alias for field number 2
+
+   upper_constraint: Constraint
+
+      Alias for field number 1
+
+   variable: Variable
+
+      Alias for field number 0
+
+cobra.util.solver.add_absolute_expression(model: Model, expression: str, name: str = 'abs_var', ub: float | None = None, difference: float = 0.0, add: bool = True) -> Components
+
+   Add the absolute value of an expression to the model.
+
+   Also defines a variable for the absolute value that can be used in
+   other objectives or constraints.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to which to add the
+        absolute expression.
+
+      * **expression** (*str*) -- Must be a valid symbolic expression
+        within the model's solver object. The absolute value is
+        applied automatically on the expression.
+
+      * **name** (*str**, **optional*) -- The name of the newly
+        created variable (default "abs_var").
+
+      * **ub** (*positive float**, **optional*) -- The upper bound for
+        the variable (default None).
+
+      * **difference** (*positive float**, **optional*) -- The
+        difference between the expression and the variable (default
+        0.0).
+
+      * **add** (*bool**, **optional*) -- Whether to add the variable
+        to the model at once (default True).
+
+   Returns:
+      A named tuple with variable and two constraints
+      (upper_constraint, lower_constraint) describing the new variable
+      and the constraints that assign the absolute value of the
+      expression to it.
+
+   Return type:
+      Components
+
+cobra.util.solver.add_cons_vars_to_problem(model: Model, what: List[Constraint | Variable] | Tuple[Constraint | Variable] | Components, **kwargs) -> None
+
+   Add variables and constraints to a model's solver object.
+
+   Useful for variables and constraints that can not be expressed with
+   reactions and lower/upper bounds. It will integrate with the
+   model's context manager in order to revert changes upon leaving the
+   context.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to which to add the
+        variables and constraints.
+
+      * **what** (*list** or **tuple** of **optlang.interface.Variable
+        or*) -- optlang.interface.Constraint The variables and
+        constraints to add to the model.
+
+      * ****kwargs** (*keyword arguments*) -- Keyword arguments passed
+        to solver's add() method.
+
+cobra.util.solver.add_lexicographic_constraints(model: Model, objectives: List[Reaction], objective_direction: str | List[str] = 'max') -> Series
+
+   Successively optimize separate targets in a specific order.
+
+   For each objective, optimize the model and set the optimal value as
+   a constraint. Proceed in the order of the objectives given. Due to
+   the specific order this is called lexicographic FBA >>[1]_<<. This
+   procedure is useful for returning unique solutions for a set of
+   important fluxes. Typically this is applied to exchange fluxes.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to be optimized.
+
+      * **objectives** (*list** of **cobra.Reaction*) -- A list of
+        reactions (or objectives) in the model for which unique fluxes
+        are to be determined.
+
+      * **objective_direction** (*str** or **list** of **str**,
+        **optional*) -- The desired objective direction for each
+        reaction (if a list) or the objective direction to use for all
+        reactions (default "max").
+
+   Returns:
+      A pandas Series containing the optimized fluxes for each of the
+      given reactions in *objectives*.
+
+   Return type:
+      pandas.Series
+
+   -[ References ]-
+
+   [1] Gomez, Jose A., Kai Höffner, and Paul I. Barton.
+
+   “DFBAlab: A Fast and Reliable MATLAB Code for Dynamic Flux Balance
+   Analysis.” BMC Bioinformatics 15, no. 1 (December 18, 2014): 409.
+   https://doi.org/10.1186/s12859-014-0409-8.
+
+cobra.util.solver.add_lp_feasibility(model: Model) -> None
+
+   Add a new objective and variables to ensure a feasible solution.
+
+   The optimized objective will be zero for a feasible solution and
+   otherwise represent the distance from feasibility (please see
+   >>[1]_<< for more information).
+
+   Parameters:
+      **model** (*cobra.Model*) -- The model whose feasibility is to
+      be tested.
+
+   Return type:
+      None
+
+   -[ References ]-
+
+   [1] Gomez, Jose A., Kai Höffner, and Paul I. Barton.
+
+   “DFBAlab: A Fast and Reliable MATLAB Code for Dynamic Flux Balance
+   Analysis.” BMC Bioinformatics 15, no. 1 (December 18, 2014): 409.
+   https://doi.org/10.1186/s12859-014-0409-8.
+
+cobra.util.solver.assert_optimal(model: Model, message: str = 'Optimization failed') -> None
+
+   Assert model solver status is optimal.
+
+   Do nothing if model solver status is optimal, otherwise throw
+   appropriate exception depending on the status.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to check the solver
+        status for.
+
+      * **message** (*str**, **optional*) -- Message for the exception
+        if solver status is not optimal (default "Optimization
+        failed").
+
+   Return type:
+      None
+
+   Raises:
+      **OptimizationError** -- If solver status is not optimal.
+
+cobra.util.solver.check_solver(obj)
+
+   Check whether the chosen solver is valid.
+
+   Check whether chosen solver is valid and also warn when using a
+   specialized solver. Will return the optlang interface for the
+   requested solver.
+
+   Parameters:
+      **obj** (*str** or **optlang.interface** or
+      **optlang.interface.Model*) -- The chosen solver.
+
+   Raises:
+      **SolverNotFound** -- If the solver is not valid.
+
+cobra.util.solver.check_solver_status(status: str = None, raise_error: bool = False) -> None
+
+   Perform standard checks on a solver's status.
+
+   Parameters:
+      * **status** (*str**, **optional*) -- The status string obtained
+        from the solver (default None).
+
+      * **raise_error** (*bool**, **optional*) -- If True, raise error
+        or display warning if False (default False).
+
+   Return type:
+      None
+
+   Warns:
+      **UserWarning** -- If *status* is not optimal and *raise_error*
+      is set to True.
+
+   Raises:
+      **OptimizationError** -- If *status* is None or is not optimal
+      and *raise_error* is set to     True.
+
+cobra.util.solver.choose_solver(model: Model, solver: str | None = None, qp: bool = False) -> ModuleType
+
+   Choose a solver given a solver name and model.
+
+   This will choose a solver compatible with the model and required
+   capabilities. Also respects model.solver where it can.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model for which to choose the
+        solver.
+
+      * **solver** (*str**, **optional*) -- The name of the solver to
+        be used (default None).
+
+      * **qp** (*boolean**, **optional*) -- True if the solver needs
+        quadratic programming capabilities (default False).
+
+   Returns:
+      Valid solver for the problem.
+
+   Return type:
+      optlang.interface
+
+   Raises:
+      **SolverNotFound** -- If no suitable solver could be found.
+
+cobra.util.solver.fix_objective_as_constraint(model: Model, fraction: float = 1.0, bound: float | None = None, name: str = 'fixed_objective_{}') -> float
+
+   Fix current objective as an additional constraint.
+
+   When adding constraints to a model, such as done in pFBA which
+   minimizes total flux, these constraints can become too powerful,
+   resulting in solutions that satisfy optimality but sacrifices too
+   much for the original objective function. To avoid that, we can fix
+   the current objective value as a constraint to ignore solutions
+   that give a lower (or higher depending on the optimization
+   direction) objective value than the original model.
+
+   When done with the model as a context, the modification to the
+   objective will be reverted when exiting that context.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to operate on.
+
+      * **fraction** (*float**, **optional*) -- The fraction of the
+        optimum the objective is allowed to reach (default 1.0).
+
+      * **bound** (*float**, **optional*) -- The bound to use instead
+        of fraction of maximum optimal value. If not None, *fraction*
+        is ignored (default None).
+
+      * **name** (*str**, **optional*) -- Name of the objective. May
+        contain one "{}" placeholder which is filled with the name of
+        the old objective (default "fixed_objective_{}").
+
+   Returns:
+      The value of the optimized objective * fraction
+
+   Return type:
+      float
+
+cobra.util.solver.get_solver_name(mip: bool = False, qp: bool = False) -> str
+
+   Select a solver for a given optimization problem.
+
+   Parameters:
+      * **mip** (*bool*) -- True if the solver requires mixed integer
+        linear programming capabilities.
+
+      * **qp** (*bool*) -- True if the solver requires quadratic
+        programming capabilities.
+
+   Returns:
+      The name of the feasible solver.
+
+   Return type:
+      str
+
+   Raises:
+      **SolverNotFound** -- If no suitable solver could be found.
+
+cobra.util.solver.interface_to_str(interface: str | ModuleType) -> str
+
+   Give a string representation for an optlang interface.
+
+   Parameters:
+      **interface** (*str**, **ModuleType*) -- Full name of the
+      interface in optlang or cobra representation. For instance,
+      'optlang.glpk_interface' or 'optlang-glpk'.
+
+   Returns:
+      The name of the interface as a string.
+
+   Return type:
+      str
+
+cobra.util.solver.linear_reaction_coefficients(model: Model, reactions: List[Reaction] | None = None) -> Dict[Reaction, float]
+
+   Retrieve coefficient for the reactions in a linear objective.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The cobra model defining the
+        linear objective.
+
+      * **reactions** (*list** of **cobra.Reaction**, **optional*) --
+        An optional list of the reactions to get the coefficients for.
+        By default, all reactions are considered (default None).
+
+   Returns:
+      A dictionary where the keys are the reaction objects and the
+      values are the corresponding coefficient. Empty dictionary if
+      there are no linear terms in the objective.
+
+   Return type:
+      dict
+
+cobra.util.solver.remove_cons_vars_from_problem(model: Model, what: List[Constraint | Variable] | Tuple[Constraint | Variable] | Components) -> None
+
+   Remove variables and constraints from a model's solver object.
+
+   Useful to temporarily remove variables and constraints from a
+   model's solver object.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model from which to remove
+        the variables and constraints.
+
+      * **what** (*list** or **tuple** of **optlang.interface.Variable
+        or*) -- optlang.interface.Constraint The variables and
+        constraints to remove from the model.
+
+cobra.util.solver.set_objective(model: Model, value: Objective | Basic | Dict[Reaction, float], additive: bool = False) -> None
+
+   Set the model objective.
+
+   Parameters:
+      * **model** (*cobra.Model*) -- The model to set the objective
+        for.
+
+      * **value** (*optlang.interface.Objective**,
+        **optlang.symbolics.Basic**, **dict*) -- If the model
+        objective is linear, then the value can be a new
+        optlang.interface.Objective or a dictionary with linear
+        coefficients where each key is a reaction and the
+        corresponding value is the new coefficient (float). If the
+        objective is non-linear and *additive* is True, then only
+        values of class optlang.interface.Objective, are accepted.
+
+      * **additive** (*bool*) -- If True, add the terms to the current
+        objective, otherwise start with an empty objective.
+
+   Raises:
+      * **ValueError** -- If model objective is non-linear and the
+        *value* is a dict.
+
+      * **TypeError** -- If the type of *value* is not one of the
+        accepted ones.
+
+
+cobra.util.util module
+======================
+
+General utilities used across the package.
+
+class cobra.util.util.AutoVivification
+
+   Bases: "dict"
+
+   Implementation of Perl's autovivification feature.
+
+   -[ Notes ]-
+
+   For more information, check
+   https://stackoverflow.com/a/652284/280182 .
+
+cobra.util.util.format_long_string(string: str, max_length: int = 50) -> str
+
+   Shorten long string into a small string with ellipsis.
+
+   Parameters:
+      * **string** (*str*) -- The long string to shorten.
+
+      * **max_length** (*int**, **optional*) -- The maximum length
+        after which to append ellipsis (default 50).
+
+   Returns:
+      The shortened string.
+
+   Return type:
+      str
+
+cobra.util.util.show_versions() -> None
+
+   Print dependency information.
+
+
+Module contents
+===============

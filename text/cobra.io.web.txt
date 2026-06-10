@@ -1,0 +1,249 @@
+cobra.io.web package
+********************
+
+
+Submodules
+==========
+
+
+cobra.io.web.abstract_model_repository module
+=============================================
+
+Provide an abstract base class that describes a remote model
+repository.
+
+class cobra.io.web.abstract_model_repository.AbstractModelRepository(*, url: URL | str, **kwargs)
+
+   Bases: "ABC"
+
+   Define an abstract base class that describes a remote model
+   repository.
+
+   name
+
+      The name of the remote repository.
+
+      Type:
+         str
+
+   abstractmethod get_sbml(model_id: str) -> bytes
+
+      Attempt to download an SBML document from the repository.
+
+      Parameters:
+         **model_id** (*str*) -- The identifier of the desired
+         metabolic model. This is typically repository specific.
+
+      Returns:
+         A gzip-compressed, UTF-8 encoded SBML document.
+
+      Return type:
+         bytes
+
+   name: str = 'Abstract'
+
+   property url: URL
+
+      Return the repository's URL.
+
+
+cobra.io.web.bigg_models_repository module
+==========================================
+
+Provide a concrete implementation of the BioModels repository
+interface.
+
+class cobra.io.web.bigg_models_repository.BiGGModels(**kwargs)
+
+   Bases: "AbstractModelRepository"
+
+   Define a concrete implementation of the BiGG Models repository.
+
+   name
+
+      The name of the BiGG Models repository.
+
+      Type:
+         str
+
+   get_sbml(model_id: str) -> bytes
+
+      Attempt to download an SBML document from the repository.
+
+      Parameters:
+         **model_id** (*str*) -- The identifier of the desired
+         metabolic model. This is typically repository specific.
+
+      Returns:
+         A gzip-compressed, UTF-8 encoded SBML document.
+
+      Return type:
+         bytes
+
+      Raises:
+         **httpx.HTTPError** -- In case there are any connection
+         problems.
+
+   name: str = 'BiGG Models'
+
+
+cobra.io.web.biomodels_repository module
+========================================
+
+Provide functions for loading metabolic models over the wire.
+
+class cobra.io.web.biomodels_repository.BioModels(**kwargs)
+
+   Bases: "AbstractModelRepository"
+
+   Define a concrete implementation of the BioModels repository.
+
+   name
+
+      The name of the BioModels repository.
+
+      Type:
+         str
+
+   get_sbml(model_id: str) -> bytes
+
+      Attempt to download an SBML document from the repository.
+
+      Parameters:
+         **model_id** (*str*) -- The identifier of the desired
+         metabolic model. This is typically repository specific.
+
+      Returns:
+         A gzip-compressed, UTF-8 encoded SBML document.
+
+      Return type:
+         bytes
+
+      Raises:
+         **httpx.HTTPError** -- In case there are any connection
+         problems.
+
+   name: str = 'BioModels'
+
+class cobra.io.web.biomodels_repository.BioModelsFile(*, name: str, fileSize: int)
+
+   Bases: "BaseModel"
+
+   Define a single BioModels file description.
+
+   name: str
+
+   size: int
+
+class cobra.io.web.biomodels_repository.BioModelsFilesResponse(*, main: List[BioModelsFile] = [])
+
+   Bases: "BaseModel"
+
+   Define the BioModels files JSON response.
+
+   main: List[BioModelsFile]
+
+
+cobra.io.web.cobrapy_repository module
+======================================
+
+Provide functions for loading metabolic models from local package
+data.
+
+class cobra.io.web.cobrapy_repository.Cobrapy(**kwargs)
+
+   Bases: "AbstractModelRepository"
+
+   Define a concrete implementation of the cobrapy (local package)
+   repository.
+
+      Attributes
+
+   get_sbml(model_id: str) -> bytes
+
+      Attempt to open an SBML document from the local repository.
+
+      Parameters:
+         **model_id** (*str*) -- The identifier of the desired
+         metabolic model. This is typically repository specific.
+
+      Returns:
+         A gzip-compressed, UTF-8 encoded SBML document.
+
+      Return type:
+         bytes
+
+   name: str = 'Cobrapy'
+
+
+cobra.io.web.load module
+========================
+
+Provide a function "load_model" to access remote model repositories.
+
+cobra.io.web.load.get_model_from_gzip_sbml(stream: bytes) -> Model
+
+   Generate a model instance from a gzip-compressed, UTF-8 encoded
+   SBML document.
+
+   Parameters:
+      **stream** (*bytes*) -- A gzip-compressed, UTF-8 encoded SBML
+      document.
+
+   Returns:
+      A model instance generated from the SBML document.
+
+   Return type:
+      Model
+
+cobra.io.web.load.load_model(model_id: str, repositories: Iterable[AbstractModelRepository] = (<cobra.io.web.cobrapy_repository.Cobrapy object>, <cobra.io.web.bigg_models_repository.BiGGModels object>, <cobra.io.web.biomodels_repository.BioModels object>), cache: bool = True) -> Model
+
+   Download an SBML model from a remote repository.
+
+   Downloaded SBML documents are by default stored in a cache on disk
+   such that future access is much faster. By default, models can be
+   loaded from the following repositories:
+
+   * BiGG Models
+
+   * BioModels
+
+   You can use the "AbstractModelRepository" class as a parent to
+   implement your own repository accessor which you pass to the
+   "load_model" function. In case you implement a new interface,
+   please consider submitting a pull request to COBRApy.
+
+   Parameters:
+      * **model_id** (*str*) -- The identifier of the desired
+        metabolic model. This is typically repository specific.
+
+      * **repositories** (*iterable**, **optional*) -- An iterable of
+        repository accessor instances. The model_id is searched in
+        order.
+
+      * **cache** (*bool**, **optional*) -- Whether or not to use the
+        local caching mechanism (default yes).
+
+   Returns:
+      A model instance generated from the SBML document.
+
+   Return type:
+      Model
+
+   Raises:
+      **RuntimeError** -- As with any internet connection, there are
+      multiple errors that can occur.
+
+   -[ Examples ]-
+
+   # Most of the time calling *load_model* with an identifier should
+   be enough. >>> print(load_model("e_coli_core")) e_coli_core >>>
+   print(load_model("MODEL1510010000")) MODEL1510010000
+
+   See also: "BiGGModels", "BioModels"
+
+
+Module contents
+===============
+
+Provide functionality to access remote model repositories.
