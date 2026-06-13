@@ -32,6 +32,22 @@ from tools import (
     run_memote_report,
     add_reaction,
     set_reaction_bounds,
+    build_model_with_carveme,
+    build_context_model_with_corda,
+    find_essential_genes,
+    find_essential_reactions,
+    check_model_consistency,
+    check_mass_balance,
+    prune_unused_reactions,
+    prune_unused_metabolites,
+    find_minimal_medium,
+    build_model_with_mackinac,
+    run_moma,
+    run_room,
+    find_blocked_rxns,
+    remove_genes,
+    gapfill,
+    gapfill_model_with_carveme,
 )
 
 # Order controls the sequence in AVAILABLE_TOOLS_TEXT shown to the LLM
@@ -50,6 +66,22 @@ _TOOL_FUNCTIONS = [
     run_memote_report,
     add_reaction,
     set_reaction_bounds,
+    build_model_with_carveme,
+    build_context_model_with_corda,
+    find_essential_genes,
+    find_essential_reactions,
+    check_model_consistency,
+    check_mass_balance,
+    prune_unused_reactions,
+    prune_unused_metabolites,
+    find_minimal_medium,
+    build_model_with_mackinac,
+    run_moma,
+    run_room,
+    find_blocked_rxns,
+    remove_genes,
+    gapfill,
+    gapfill_model_with_carveme,
 ]
 
 
@@ -75,6 +107,11 @@ def _build_registry(fns: list) -> tuple[dict, dict, dict]:
                 "description": p["description"],
                 "value":       p["default"],
                 "required":    p["required"],
+                # Optional UI hints: "input_type": "file" makes the plan editor
+                # render a file uploader instead of a text box; "file_types"
+                # restricts the accepted extensions.
+                **({"input_type": p["input_type"]} if "input_type" in p else {}),
+                **({"file_types": p["file_types"]} if "file_types" in p else {}),
             }
             for param_name, p in meta.get("params", {}).items()
         }

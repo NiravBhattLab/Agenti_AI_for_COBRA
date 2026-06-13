@@ -88,3 +88,39 @@ Now your TASK is to Rewrite the final response based on the system_prompt given 
 
 
 # - `set_reaction_bounds_for_FBA(csv_filepath)`: Reads a csv file for reaction bounds and saves it to the model manager.
+
+chat_file_upload_context = """
+File Upload Protocol:
+When a user requests an operation that requires a file (build a context model with CORDA, build a genome-scale model with CarveMe, or set reaction bounds from a CSV) and the file has not been provided:
+
+1. Do NOT call the file-dependent tool with a fabricated or guessed filename.
+2. Call `request_file_upload` immediately with:
+   - param: the exact argument name (e.g. "data_csv", "fasta_file", "csv_path")
+   - file_types: accepted extensions as a comma-separated string (e.g. "csv,tsv,txt" or "faa,fasta,fa,fna")
+   - description: one sentence describing what the file must contain
+3. After calling `request_file_upload`, stop — do not call any other tool in the same turn.
+4. In the next turn, if the user message contains an uploaded filename (e.g. "Uploaded: expression_data.csv"), use that filename directly as the argument to the file-dependent tool.
+
+Tools requiring files:
+- build_context_model_with_corda → param: data_csv (CSV with gene/reaction ids + expression or confidence values)
+- build_model_with_carveme → param: fasta_file (protein .faa or genome .fna/.fa/.fasta)
+- set_reaction_bounds (batch mode) → param: csv_path (CSV with columns rxn_id, lb, ub)
+"""
+
+
+chat_credential_context = """
+Credential Protocol:
+The build_model_with_mackinac tool reconstructs a genome-scale model from a PATRIC genome via the ModelSEED web service. It requires the user's PATRIC account credentials (username and password) and live internet access.
+
+When a user asks to reconstruct or build a model with Mackinac / ModelSEED / PATRIC and has NOT already provided their PATRIC username and password:
+
+1. Do NOT call build_model_with_mackinac with a fabricated, guessed, blank, or placeholder username or password.
+2. Ask the user, in plain language, to provide:
+   - their PATRIC username
+   - their PATRIC password
+   - the PATRIC genome_id to reconstruct (e.g. "226186.12"), if they have not already given one
+3. Do not call any other tool in that turn — just ask for the missing details and wait for the user's reply.
+4. Once the user supplies the username, password, and genome_id, call build_model_with_mackinac with those exact values.
+
+Never store, echo back, repeat, or display the user's password in any of your responses.
+"""

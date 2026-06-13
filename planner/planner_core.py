@@ -537,6 +537,8 @@ CURRENT PLAN:
 USER FEEDBACK:
 {feedback}
 
+{AVAILABLE_TOOLS_TEXT}
+
 INSTRUCTIONS:
 - Make only the changes the feedback requests
 - If the feedback asks to add a step, insert it in a logical position and renumber
@@ -544,6 +546,7 @@ INSTRUCTIONS:
 - If the feedback asks to explain a step, update the rationale field for that step
 - Preserve the structure and content of all other steps unchanged
 - Update the summary if the plan has meaningfully changed
+- When adding a new step, choose the most appropriate tool from AVAILABLE TOOLS above
 
 OUTPUT SCHEMA (return ONLY valid JSON, no preamble):
 {_PLAN_SCHEMA}

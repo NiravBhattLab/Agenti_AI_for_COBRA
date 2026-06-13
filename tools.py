@@ -675,7 +675,8 @@ def run_memote_report() -> dict:
         for test_name, case in cases.items():
             outcome = case.get("result", "unknown")
             title   = case.get("title", test_name)
-            message = case.get("message") or ""
+            raw_msg = case.get("message")
+            message = str(raw_msg) if raw_msg else ""
 
             # Parametrized tests store result as {param: outcome}
             if isinstance(outcome, dict):
@@ -696,8 +697,12 @@ def run_memote_report() -> dict:
             else:
                 skipped.append(title)
 
-        # Save full HTML report
+        # Save full HTML report and extract total score.
+        # snapshot_report calls compute_score() internally, which writes
+        # result["score"]["total_score"] and result["score"]["sections"] in place.
         report_path = None
+        total_score_pct = None
+        section_scores = {}
         try:
             html = snapshot_report(result)
             report_dir = os.path.join(session_dir, "memote")
@@ -705,6 +710,12 @@ def run_memote_report() -> dict:
             report_path = os.path.join(report_dir, "memote_report.html")
             with open(report_path, "w", encoding="utf-8") as fh:
                 fh.write(html)
+            score_block = result.get("score", {})
+            raw_total = score_block.get("total_score")
+            if raw_total is not None:
+                total_score_pct = round(raw_total * 100, 1)
+            for sec in score_block.get("sections", []):
+                section_scores[sec["section"]] = round(sec["score"] * 100, 1)
         except Exception:
             pass  # report generation failure is non-fatal
 
@@ -718,17 +729,20 @@ def run_memote_report() -> dict:
             "tests_failed": len(failed),
             "tests_skipped": len(skipped),
         }
+        if total_score_pct is not None:
+            base["total_score"] = f"{total_score_pct}%"
+        if section_scores:
+            base["scores_by_section"] = {k: f"{v}%" for k, v in section_scores.items()}
         if report_path:
             base["full_report"] = report_path
+
+        score_str = f" Total memote score: {total_score_pct}%." if total_score_pct is not None else ""
 
         if not failed:
             return {
                 **base,
                 "status": "passed",
-                "summary": (
-                    f"All {len(passed)} memote tests passed. "
-                    "The model meets quality standards."
-                ),
+                "summary": f"All {len(passed)} memote tests passed.{score_str}",
             }
 
         TOO_MANY = 10
@@ -737,8 +751,8 @@ def run_memote_report() -> dict:
                 **base,
                 "status": "failed",
                 "summary": (
-                    f"{len(failed)} out of {total_run} tests failed "
-                    f"(too many to list — showing the top {min(5, len(failed))} below)."
+                    f"{len(failed)} out of {total_run} tests failed.{score_str} "
+                    f"Showing top {min(5, len(failed))} failures below."
                 ),
                 "major_failures": [_fmt(f) for f in failed[:5]],
             }
@@ -746,7 +760,7 @@ def run_memote_report() -> dict:
             return {
                 **base,
                 "status": "failed",
-                "summary": f"{len(failed)} out of {total_run} tests failed.",
+                "summary": f"{len(failed)} out of {total_run} tests failed.{score_str}",
                 "failures": [_fmt(f) for f in failed],
             }
 
@@ -933,7 +947,8 @@ def set_reaction_bounds(
     Set or change flux bounds on one or more reactions in the loaded model.
 
     Single-reaction mode  — provide reaction_id, lower_bound, upper_bound.
-    CSV batch mode        — provide csv_path to a file with columns rxn_id, lb, ub.
+    CSV batch mode        — provide csv_path to a CSV with 3 columns: reaction_id, lower_bound, upper_bound.
+                           Column names are ignored; order is positional. Header row is auto-detected.
     """
     import pandas as _pd, os as _os
 
@@ -949,12 +964,20 @@ def set_reaction_bounds(
         if not _os.path.exists(csv_path):
             return {"error": f"CSV file not found: {csv_path}"}
         try:
-            df = _pd.read_csv(csv_path)
+            # Read without assuming headers; positionally map col0=rxn_id, col1=lb, col2=ub.
+            df = _pd.read_csv(csv_path, header=None)
+            if df.shape[1] < 3:
+                return {"error": f"CSV must have at least 3 columns (reaction_id, lb, ub). Found {df.shape[1]}."}
+            # Auto-detect a header row: if col1 or col2 of the first row can't be cast to float, skip it.
+            try:
+                float(df.iloc[0, 1])
+                float(df.iloc[0, 2])
+            except (ValueError, TypeError):
+                df = df.iloc[1:].reset_index(drop=True)
+            df = df.iloc[:, :3]
+            df.columns = ["rxn_id", "lb", "ub"]
         except Exception as e:
             return {"error": f"Could not read CSV: {e}"}
-        required_cols = {"rxn_id", "lb", "ub"}
-        if not required_cols.issubset(set(df.columns)):
-            return {"error": f"CSV must have columns: rxn_id, lb, ub. Found: {list(df.columns)}"}
 
         updated, errors = [], []
         for _, row in df.iterrows():
@@ -1018,6 +1041,1443 @@ def set_reaction_bounds(
     return response
 
 
+
+def build_model_with_carveme(
+    fasta_file: str,
+    model_id: str = None,
+    gram: str = None,
+) -> dict:
+    import subprocess as _sp
+
+    if not os.path.isabs(fasta_file) and session_uploads_dir:
+        fasta_file = os.path.join(session_uploads_dir, fasta_file)
+    if not os.path.exists(fasta_file):
+        return {"error": f"FASTA file not found: {fasta_file}"}
+
+    output_dir = os.path.join(session_dir, "carveme") if session_dir else "carveme"
+    os.makedirs(output_dir, exist_ok=True)
+
+    if not model_id:
+        model_id = os.path.splitext(os.path.basename(fasta_file))[0]
+
+    out_path = os.path.join(output_dir, f"{model_id}.xml")
+
+    def _is_dna(fasta_path: str) -> bool:
+        with open(fasta_path, "r") as fh:
+            seq = "".join(
+                line.strip() for line in fh if not line.startswith(">")
+            )[:200]
+        return bool(seq) and all(c in "ACGTNacgtn" for c in seq)
+
+    protein_fasta = fasta_file
+    prodigal_used = False
+
+    if _is_dna(fasta_file):
+        protein_fasta = os.path.join(output_dir, f"{model_id}_proteins.faa")
+        prodigal_cmd = [
+            "prodigal",
+            "-i", fasta_file,
+            "-a", protein_fasta,
+            "-p", "meta",
+        ]
+        try:
+            _sp.run(prodigal_cmd, check=True, capture_output=True)
+            prodigal_used = True
+        except FileNotFoundError:
+            return {
+                "error": "Prodigal executable not found.",
+                "fix": "Install with: sudo apt install prodigal  OR  conda install -c bioconda prodigal",
+            }
+        except _sp.CalledProcessError as e:
+            return {
+                "error": "Prodigal failed.",
+                "detail": e.stderr.decode(errors="replace") if e.stderr else str(e),
+            }
+
+    carve_cmd = ["carve", protein_fasta, "-o", out_path]
+    if gram in ("grampos", "gramneg"):
+        carve_cmd += ["--gram", gram]
+
+    try:
+        result = _sp.run(carve_cmd, capture_output=True)
+    except FileNotFoundError:
+        return {"error": "CarveMe (carve) not found. Install with: pip install carveme"}
+
+    if result.returncode != 0 or not os.path.exists(out_path):
+        stderr = result.stderr.decode(errors="replace").strip() if result.stderr else ""
+        stdout = result.stdout.decode(errors="replace").strip() if result.stdout else ""
+        detail = stderr or stdout or "No output captured."
+        return {"error": "CarveMe failed to produce an output model.", "detail": detail}
+
+    try:
+        loaded_id = model_manager.load_sbml(out_path)
+        model = model_manager.get_current_model()
+        return {
+            "status": "success",
+            "model_id": loaded_id,
+            "output_file": out_path,
+            "prodigal_used": prodigal_used,
+            "reactions": len(model.reactions),
+            "metabolites": len(model.metabolites),
+            "genes": len(model.genes),
+        }
+    except Exception as e:
+        return {
+            "status": "success",
+            "warning": f"Model saved but could not be auto-loaded: {e}",
+            "output_file": out_path,
+            "prodigal_used": prodigal_used,
+        }
+
+
+def _detect_columns(df):
+    """Pick the id column and value column from a confidence/expression CSV."""
+    cols = {c.lower().strip(): c for c in df.columns}
+
+    id_candidates = ["gene", "gene_id", "genes", "gene_name", "locus",
+                     "reaction", "rxn", "rxn_id", "reaction_id", "id"]
+    val_candidates = ["confidence", "conf", "score", "expression", "expr",
+                      "value", "level", "tpm", "fpkm", "rpkm", "counts", "count"]
+
+    id_col = next((cols[c] for c in id_candidates if c in cols), None)
+    val_col = next((cols[c] for c in val_candidates if c in cols), None)
+
+    # Fall back to positional: first column = ids, second = values
+    if id_col is None:
+        id_col = df.columns[0]
+    if val_col is None:
+        remaining = [c for c in df.columns if c != id_col]
+        val_col = remaining[0] if remaining else None
+    return id_col, val_col
+
+
+def _expression_to_confidence(values, high_pct, mid_pct, low_pct):
+    """Bin continuous expression values into CORDA confidence classes.
+
+    >= high_pct percentile -> 3 (high)
+    >= mid_pct  percentile -> 2 (medium)
+    >= low_pct  percentile -> 1 (low)
+    <  low_pct  percentile -> -1 (treated as not expressed)
+    """
+    import numpy as _np
+    arr = _np.asarray(list(values), dtype=float)
+    hi, mid, lo = _np.percentile(arr, [high_pct, mid_pct, low_pct])
+
+    def _bin(v):
+        if v >= hi:
+            return 3
+        if v >= mid:
+            return 2
+        if v >= lo:
+            return 1
+        return -1
+
+    return [_bin(v) for v in arr], {"low": float(lo), "medium": float(mid), "high": float(hi)}
+
+
+def _strip_version(token: str) -> str:
+    """Drop a trailing version suffix, e.g. 'ENSG00000139618.15' -> 'ENSG00000139618'."""
+    import re as _re
+    return _re.sub(r"\.\d+$", "", token)
+
+
+def _build_gene_index(model) -> dict:
+    """Map every identifier the model knows for each gene -> model gene id.
+
+    Pulls from the gene id, the gene name/symbol, and every cross-reference in
+    gene.annotation (ncbigene, ensembl, uniprot, refseq, ...). Lets an uploaded
+    expression/confidence file match the model regardless of which namespace it
+    uses. The model gene id always wins over weaker (e.g. symbol) matches.
+    """
+    index: dict = {}
+
+    def _add(key, gid, overwrite=False):
+        if key is None:
+            return
+        k = str(key).strip().lower()
+        if not k:
+            return
+        if overwrite or k not in index:
+            index[k] = gid
+        base = _strip_version(k)
+        if base != k and base not in index:
+            index[base] = gid
+
+    # Lowest priority first (symbol), then annotation cross-refs, then id (wins).
+    for g in model.genes:
+        if g.name:
+            _add(g.name, g.id)
+    for g in model.genes:
+        for v in (g.annotation or {}).values():
+            if isinstance(v, (list, tuple, set)):
+                for item in v:
+                    _add(item, g.id)
+            else:
+                _add(v, g.id)
+    for g in model.genes:
+        _add(g.id, g.id, overwrite=True)
+    return index
+
+
+def _match_gene(raw_id: str, index: dict):
+    """Resolve an uploaded id to a model gene id via the cross-reference index."""
+    k = str(raw_id).strip().lower()
+    if k in index:
+        return index[k]
+    base = _strip_version(k)
+    return index.get(base)
+
+
+def build_context_model_with_corda(
+    data_csv: str,
+    data_type: str = "auto",
+    model_id: str = None,
+    high_percentile: float = 75.0,
+    mid_percentile: float = 50.0,
+    low_percentile: float = 25.0,
+    keep_objective_high: bool = True,
+    met_prod: str = None,
+) -> dict:
+    """
+    Build a context-specific genome-scale model from the currently loaded base
+    (reference) model using CORDA (Cost Optimization Reaction Dependency Assessment).
+
+    The uploaded CSV is auto-detected as one of:
+      * gene expression      — 2 columns: gene id + a continuous expression value
+                               (TPM/FPKM/counts). Values are binned into CORDA
+                               confidence classes (-1,1,2,3) by percentile, so the
+                               user only needs to provide raw expression data.
+      * gene confidence      — 2 columns: gene id + an integer confidence in
+                               {-1,0,1,2,3}.
+      * reaction confidence  — 2 columns: reaction id + an integer confidence in
+                               {-1,0,1,2,3}.
+
+    data_type forces the interpretation: 'auto' (default), 'expression',
+    'gene_confidence', or 'reaction_confidence'.
+
+    Gene ids in the file do NOT have to match the model's own gene ids. They are
+    resolved through a cross-reference index built from the model (gene id, gene
+    symbol/name, and every annotation xref — Ensembl, Entrez/ncbigene, UniProt,
+    RefSeq, ...), with version suffixes like '.15' stripped. This means a file
+    downloaded from GTEx, Expression Atlas, GEO, etc. can often be used directly.
+    The returned 'id_mapping_coverage' reports how many model genes were matched.
+    """
+    import numpy as _np
+    import pandas as _pd
+
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):  # ModelManager returns a dict when nothing loaded
+            return {"error": "No model is currently loaded. Load a base/reference model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    # Resolve CSV path (relative -> session uploads dir)
+    if not os.path.isabs(data_csv) and session_uploads_dir:
+        data_csv = os.path.join(session_uploads_dir, data_csv)
+    if not os.path.exists(data_csv):
+        return {"error": f"Data CSV not found: {data_csv}"}
+
+    try:
+        df = _pd.read_csv(data_csv)
+    except Exception as e:
+        return {"error": f"Could not read CSV: {e}"}
+    if df.shape[1] < 2:
+        return {"error": "CSV must have at least two columns: an id column and a value column."}
+
+    id_col, val_col = _detect_columns(df)
+    if val_col is None:
+        return {"error": "Could not identify a value column in the CSV."}
+
+    ids = df[id_col].astype(str).str.strip().tolist()
+    raw_vals = _pd.to_numeric(df[val_col], errors="coerce")
+    if raw_vals.isna().all():
+        return {"error": f"Value column '{val_col}' has no numeric values."}
+
+    # ── Decide id level: gene-level vs reaction-level ──────────────────────────
+    # Genes are matched through a model-derived cross-reference index, so the
+    # uploaded file may key on Ensembl, Entrez, UniProt, RefSeq or gene symbols
+    # (with or without version suffixes) — not just the model's own gene ids.
+    gene_index = _build_gene_index(model)
+    rxn_ids = {r.id for r in model.reactions}
+
+    gene_hits = [_match_gene(i, gene_index) for i in ids]
+    n_gene_match = sum(1 for gid in gene_hits if gid is not None)
+    n_rxn_match = sum(1 for i in ids if i in rxn_ids)
+
+    # ── Decide value semantics: discrete confidence vs continuous expression ───
+    nonnull = raw_vals.dropna()
+    looks_like_confidence = bool(nonnull.isin([-1, 0, 1, 2, 3]).all())
+
+    if data_type == "reaction_confidence":
+        level, semantics = "reaction", "confidence"
+    elif data_type == "gene_confidence":
+        level, semantics = "gene", "confidence"
+    elif data_type == "expression":
+        level, semantics = ("reaction" if n_rxn_match > n_gene_match else "gene"), "expression"
+    else:  # auto
+        level = "reaction" if n_rxn_match > n_gene_match else "gene"
+        semantics = "confidence" if looks_like_confidence else "expression"
+
+    if level == "gene" and n_gene_match == 0:
+        return {"error": (
+            f"None of the {len(ids)} ids in column '{id_col}' could be matched to genes in "
+            f"the loaded model '{model_manager.current_model_id}' — even after checking gene "
+            "ids, symbols and annotation cross-references (Ensembl/Entrez/UniProt/RefSeq). "
+            "The file is likely for a different organism, or the model carries no gene "
+            "annotations to map against (e.g. the e_coli_core textbook model)."
+        )}
+    if level == "reaction" and n_rxn_match == 0:
+        return {"error": (
+            f"None of the ids in column '{id_col}' match reaction IDs in the loaded model. "
+            "Check the identifiers, or set data_type explicitly."
+        )}
+
+    # ── Resolve uploaded ids -> model entity, aggregating duplicates ───────────
+    # Several uploaded rows can map to the same model gene (multiple probes or
+    # transcripts); collapse them by taking the max value, the usual convention.
+    mapped_value: dict = {}
+    matched_rows = 0
+    if level == "gene":
+        for gid, v in zip(gene_hits, raw_vals):
+            if gid is None or _pd.isna(v):
+                continue
+            matched_rows += 1
+            mapped_value[gid] = max(float(v), mapped_value.get(gid, float("-inf")))
+        total = len(model.genes)
+        coverage = {
+            "model_genes_total": total,
+            "model_genes_matched": len(mapped_value),
+            "model_genes_match_pct": round(100.0 * len(mapped_value) / total, 1) if total else 0.0,
+            "uploaded_rows": len(ids),
+            "uploaded_rows_matched": matched_rows,
+            "uploaded_rows_unmatched": len(ids) - matched_rows,
+        }
+    else:  # reaction level: ids are matched directly against reaction ids
+        for i, v in zip(ids, raw_vals):
+            if i not in rxn_ids or _pd.isna(v):
+                continue
+            matched_rows += 1
+            mapped_value[i] = max(float(v), mapped_value.get(i, float("-inf")))
+        total = len(model.reactions)
+        coverage = {
+            "model_reactions_total": total,
+            "model_reactions_matched": len(mapped_value),
+            "uploaded_rows": len(ids),
+            "uploaded_rows_matched": matched_rows,
+            "uploaded_rows_unmatched": len(ids) - matched_rows,
+        }
+
+    # ── Convert aggregated values to a confidence map keyed by model entity id ─
+    binning = None
+    entity_conf: dict = {}
+    if semantics == "expression":
+        keys = list(mapped_value.keys())
+        conf_list, binning = _expression_to_confidence(
+            [mapped_value[k] for k in keys], high_percentile, mid_percentile, low_percentile
+        )
+        entity_conf = dict(zip(keys, conf_list))
+    else:
+        for k, v in mapped_value.items():
+            iv = int(round(v))
+            if iv not in (-1, 0, 1, 2, 3):
+                return {"error": f"Confidence value {v} for '{k}' is invalid. Allowed: -1,0,1,2,3."}
+            entity_conf[k] = iv
+
+    # ── Build the reaction confidence dict CORDA needs ─────────────────────────
+    np_shim = not hasattr(_np, "in1d")
+    if np_shim:  # corda 0.5.x still calls the numpy-1.x alias removed in numpy 2.0
+        _np.in1d = _np.isin
+    try:
+        from corda import reaction_confidence, CORDA
+    except ImportError:
+        return {"error": "The 'corda' package is not installed. Run: pip install corda"}
+
+    if level == "reaction":
+        rxn_conf = {r.id: entity_conf.get(r.id, 0) for r in model.reactions}
+    else:
+        rxn_conf = {}
+        for r in model.reactions:
+            if r.gene_reaction_rule.strip():
+                rxn_conf[r.id] = reaction_confidence(r, entity_conf)
+            else:
+                rxn_conf[r.id] = 0
+
+    # Keep the objective reaction(s) high-confidence so the context model can grow
+    objective_rxns = []
+    if keep_objective_high and model.objective and model.objective.expression:
+        for var in model.objective.expression.free_symbols:
+            rid = var.name.replace("_reverse", "").split(" ")[0]
+            # objective variable names map onto reaction ids
+            base = rid
+            if model.reactions.has_id(base):
+                rxn_conf[base] = 3
+                objective_rxns.append(base)
+
+    conf_hist = {c: sum(1 for v in rxn_conf.values() if v == c) for c in (-1, 0, 1, 2, 3)}
+
+    if not model_id:
+        model_id = f"{model_manager.current_model_id}_corda"
+
+    # ── Run CORDA ──────────────────────────────────────────────────────────────
+    try:
+        met_prod_arg = None
+        if met_prod:
+            met_prod_arg = [m.strip() for m in met_prod.split(",") if m.strip()]
+        opt = CORDA(model, rxn_conf, met_prod=met_prod_arg) if met_prod_arg else CORDA(model, rxn_conf)
+        opt.build()
+        rec_model = opt.cobra_model(model_id)
+    except Exception as e:
+        return {"error": f"CORDA reconstruction failed: {e}"}
+
+    # ── Save SBML and load into the session ────────────────────────────────────
+    output_dir = os.path.join(session_dir, "corda") if session_dir else "corda"
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, f"{model_id}.xml")
+    try:
+        write_sbml_model(rec_model, out_path)
+    except Exception as e:
+        return {"error": f"CORDA model built but could not be saved as SBML: {e}"}
+
+    included = sum(1 for v in opt.included.values() if v)
+    result = {
+        "status": "success",
+        "model_id": model_id,
+        "output_file": out_path,
+        "interpreted_as": f"{level}-level {semantics}",
+        "id_column": id_col,
+        "value_column": val_col,
+        "id_mapping_coverage": coverage,
+        "base_reactions": len(model.reactions),
+        "reconstructed_reactions": len(rec_model.reactions),
+        "reconstructed_metabolites": len(rec_model.metabolites),
+        "reconstructed_genes": len(rec_model.genes),
+        "reactions_included_by_corda": included,
+        "confidence_distribution": conf_hist,
+    }
+    if binning:
+        result["expression_percentile_thresholds"] = {
+            "low_percentile": low_percentile, "mid_percentile": mid_percentile,
+            "high_percentile": high_percentile, "value_cutoffs": binning,
+        }
+    if objective_rxns:
+        result["objective_kept_high_confidence"] = objective_rxns
+    if level == "gene" and coverage.get("model_genes_match_pct", 100) < 10:
+        result["warning"] = (
+            f"Only {coverage['model_genes_matched']}/{coverage['model_genes_total']} "
+            f"({coverage['model_genes_match_pct']}%) of model genes were matched by the "
+            "uploaded file. The reconstruction may be poorly constrained — check that the "
+            "file is for the right organism and uses identifiers the model annotates."
+        )
+
+    try:
+        loaded_id = model_manager.load_sbml(out_path)
+        result["loaded_model_id"] = loaded_id
+    except Exception as e:
+        result["warning"] = f"Model saved but could not be auto-loaded: {e}"
+    return result
+
+
+def request_file_upload(param: str, file_types: str, description: str) -> dict:
+    """
+    Call this when a required file has not been uploaded yet and you cannot proceed without it.
+    param: exact parameter name the file maps to (e.g. 'data_csv', 'fasta_file', 'csv_path').
+    file_types: comma-separated accepted extensions (e.g. 'csv,tsv' or 'faa,fasta,fa,fna').
+    description: one sentence telling the user what the file must contain.
+    After calling this, STOP — do not call any other tool in the same turn.
+    """
+    return {"__upload_required__": True, "param": param, "file_types": file_types, "description": description}
+
+
+def _apply_uploaded_bounds(model):
+    """Apply any reaction bounds uploaded via CSV (model_manager.bounds_data) in place.
+
+    Mirrors the bounds handling in run_fba/run_pfba so growth-dependent analyses
+    (essentiality, minimal medium) respect the same nutrient/flux constraints.
+    """
+    bounds = model_manager.bounds_data
+    if bounds:
+        for rxn_id, lval, uval in bounds:
+            if model.reactions.has_id(rxn_id):
+                model.reactions.get_by_id(rxn_id).bounds = (lval, uval)
+
+
+def find_essential_genes(threshold: float = None) -> dict:
+    """
+    Find the essential genes of the currently loaded model.
+
+    Core cobrapy function: cobra.flux_analysis.find_essential_genes.
+    A gene is essential if knocking out all reactions that depend on it drops
+    the objective (growth) to zero / below the threshold / infeasible.
+    """
+    from cobra.flux_analysis import find_essential_genes as _feg
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    if not model.objective.expression:
+        return {"error": "No objective function is set on the model. Set an objective before finding essential genes."}
+
+    _apply_uploaded_bounds(model)
+
+    try:
+        genes = _feg(model, threshold=threshold)
+    except Exception as e:
+        return {"error": str(e)}
+
+    rows = sorted(({"id": g.id, "name": g.name} for g in genes), key=lambda d: d["id"])
+
+    if len(rows) > 5:
+        import pandas as _pd
+        out_dir = os.path.join(session_dir, "essentiality")
+        os.makedirs(out_dir, exist_ok=True)
+        csv_path = os.path.join(out_dir, "essential_genes.csv")
+        _pd.DataFrame(rows).to_csv(csv_path, index=False)
+        return {
+            "essential_gene_count": len(rows),
+            "total_genes": len(model.genes),
+            "threshold": threshold if threshold is not None else "1% of max objective (default)",
+            "first_5": rows[:5],
+            "message": f"{len(rows)} essential genes found. Full list saved to {csv_path}.",
+        }
+    return {
+        "essential_gene_count": len(rows),
+        "total_genes": len(model.genes),
+        "threshold": threshold if threshold is not None else "1% of max objective (default)",
+        "essential_genes": rows,
+    }
+
+
+def find_essential_reactions(threshold: float = None) -> dict:
+    """
+    Find the essential reactions of the currently loaded model.
+
+    Core cobrapy function: cobra.flux_analysis.find_essential_reactions.
+    A reaction is essential if constraining its flux to zero drops the objective
+    (growth) to zero / below the threshold / infeasible.
+    """
+    from cobra.flux_analysis import find_essential_reactions as _fer
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    if not model.objective.expression:
+        return {"error": "No objective function is set on the model. Set an objective before finding essential reactions."}
+
+    _apply_uploaded_bounds(model)
+
+    try:
+        reactions = _fer(model, threshold=threshold)
+    except Exception as e:
+        return {"error": str(e)}
+
+    rows = sorted(({"id": r.id, "name": r.name} for r in reactions), key=lambda d: d["id"])
+
+    if len(rows) > 5:
+        import pandas as _pd
+        out_dir = os.path.join(session_dir, "essentiality")
+        os.makedirs(out_dir, exist_ok=True)
+        csv_path = os.path.join(out_dir, "essential_reactions.csv")
+        _pd.DataFrame(rows).to_csv(csv_path, index=False)
+        return {
+            "essential_reaction_count": len(rows),
+            "total_reactions": len(model.reactions),
+            "threshold": threshold if threshold is not None else "1% of max objective (default)",
+            "first_5": rows[:5],
+            "message": f"{len(rows)} essential reactions found. Full list saved to {csv_path}.",
+        }
+    return {
+        "essential_reaction_count": len(rows),
+        "total_reactions": len(model.reactions),
+        "threshold": threshold if threshold is not None else "1% of max objective (default)",
+        "essential_reactions": rows,
+    }
+
+
+def check_model_consistency(flux_threshold: float = 1.0) -> dict:
+    """
+    Check the consistency of the loaded model using FASTCC and remove blocked reactions.
+
+    Core cobrapy function: cobra.flux_analysis.fastcc.
+    FASTCC (Fast Consistency Check) returns a consistent model with all blocked
+    (flux-inconsistent) reactions removed. The cleaned, consistent model REPLACES
+    the currently loaded model in the session.
+    """
+    from cobra.flux_analysis import fastcc as _fastcc
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    _apply_uploaded_bounds(model)
+
+    try:
+        consistent = _fastcc(model, flux_threshold=flux_threshold)
+    except Exception as e:
+        return {"error": str(e)}
+
+    original_rxn_ids = {r.id for r in model.reactions}
+    consistent_rxn_ids = {r.id for r in consistent.reactions}
+    blocked = sorted(original_rxn_ids - consistent_rxn_ids)
+
+    # Replace the active model with the consistent one (keep the same model id).
+    current_id = model_manager.current_model_id
+    model_manager.models[current_id] = consistent
+
+    result = {
+        "status": "success",
+        "model_id": current_id,
+        "flux_threshold": flux_threshold,
+        "reactions_before": len(original_rxn_ids),
+        "reactions_after": len(consistent_rxn_ids),
+        "blocked_reactions_removed": len(blocked),
+        "note": "The loaded model has been replaced with the consistent (blocked-reaction-free) model.",
+    }
+    if blocked:
+        if len(blocked) > 20:
+            result["blocked_reactions_sample"] = blocked[:20]
+            result["message"] = f"{len(blocked)} blocked reactions removed (showing first 20)."
+        else:
+            result["blocked_reactions"] = blocked
+    return result
+
+
+def check_mass_balance() -> dict:
+    """
+    Check the mass and charge balance of every reaction in the loaded model.
+
+    Core cobrapy function: cobra.manipulation.check_mass_balance.
+    Returns the unbalanced reactions together with the element/charge imbalance.
+    An empty result means all reactions are balanced.
+    """
+    from cobra.manipulation import check_mass_balance as _cmb
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    try:
+        imbalance = _cmb(model)
+    except Exception as e:
+        return {"error": str(e)}
+
+    rows = [
+        {
+            "reaction_id": rxn.id,
+            "reaction_name": rxn.name,
+            "imbalance": {str(k): float(v) for k, v in elements.items()},
+        }
+        for rxn, elements in imbalance.items()
+    ]
+
+    if not rows:
+        return {
+            "status": "balanced",
+            "unbalanced_reaction_count": 0,
+            "total_reactions": len(model.reactions),
+            "summary": "All reactions are mass- and charge-balanced.",
+        }
+
+    if len(rows) > 5:
+        import pandas as _pd
+        out_dir = os.path.join(session_dir, "validation")
+        os.makedirs(out_dir, exist_ok=True)
+        csv_path = os.path.join(out_dir, "mass_imbalance.csv")
+        _pd.DataFrame(
+            [{"reaction_id": r["reaction_id"], "reaction_name": r["reaction_name"],
+              "imbalance": str(r["imbalance"])} for r in rows]
+        ).to_csv(csv_path, index=False)
+        return {
+            "status": "unbalanced",
+            "unbalanced_reaction_count": len(rows),
+            "total_reactions": len(model.reactions),
+            "first_5": rows[:5],
+            "message": f"{len(rows)} unbalanced reactions found. Full list saved to {csv_path}.",
+        }
+    return {
+        "status": "unbalanced",
+        "unbalanced_reaction_count": len(rows),
+        "total_reactions": len(model.reactions),
+        "unbalanced_reactions": rows,
+    }
+
+
+def prune_unused_reactions() -> dict:
+    """
+    Remove reactions that have no assigned metabolites from the loaded model.
+
+    Core cobrapy function: cobra.manipulation.prune_unused_reactions.
+    The pruned model REPLACES the currently loaded model in the session.
+    """
+    from cobra.manipulation import prune_unused_reactions as _prune
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    before = len(model.reactions)
+    try:
+        pruned_model, removed = _prune(model)
+    except Exception as e:
+        return {"error": str(e)}
+
+    current_id = model_manager.current_model_id
+    model_manager.models[current_id] = pruned_model
+
+    removed_ids = [r.id for r in removed]
+    return {
+        "status": "success",
+        "model_id": current_id,
+        "reactions_before": before,
+        "reactions_after": len(pruned_model.reactions),
+        "removed_count": len(removed_ids),
+        "removed_reactions": removed_ids[:50],
+        "note": "The loaded model has been replaced with the pruned model."
+                + (" Showing first 50 removed reaction IDs." if len(removed_ids) > 50 else ""),
+    }
+
+
+def prune_unused_metabolites() -> dict:
+    """
+    Remove metabolites that are not involved in any reaction from the loaded model.
+
+    Core cobrapy function: cobra.manipulation.prune_unused_metabolites.
+    The pruned model REPLACES the currently loaded model in the session.
+    """
+    from cobra.manipulation import prune_unused_metabolites as _prune
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    before = len(model.metabolites)
+    try:
+        pruned_model, removed = _prune(model)
+    except Exception as e:
+        return {"error": str(e)}
+
+    current_id = model_manager.current_model_id
+    model_manager.models[current_id] = pruned_model
+
+    removed_ids = [m.id for m in removed]
+    return {
+        "status": "success",
+        "model_id": current_id,
+        "metabolites_before": before,
+        "metabolites_after": len(pruned_model.metabolites),
+        "removed_count": len(removed_ids),
+        "removed_metabolites": removed_ids[:50],
+        "note": "The loaded model has been replaced with the pruned model."
+                + (" Showing first 50 removed metabolite IDs." if len(removed_ids) > 50 else ""),
+    }
+
+
+def find_minimal_medium(
+    min_objective_value: float = 0.1,
+    minimize_components: bool = False,
+    open_exchanges: bool = False,
+) -> dict:
+    """
+    Find the minimal growth medium for the loaded model.
+
+    Core cobrapy function: cobra.medium.minimal_medium.
+    Returns the import flux for each exchange reaction required to sustain at
+    least `min_objective_value` growth. Set `minimize_components=True` to instead
+    minimise the NUMBER of medium ingredients (slower, mixed-integer problem).
+    """
+    from cobra.medium import minimal_medium as _mm
+    import pandas as _pd
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    if not model.objective.expression:
+        return {"error": "No objective function is set on the model. Set an objective (e.g. biomass) before finding a minimal medium."}
+
+    _apply_uploaded_bounds(model)
+
+    try:
+        medium = _mm(
+            model,
+            min_objective_value=min_objective_value,
+            minimize_components=minimize_components,
+            open_exchanges=open_exchanges,
+        )
+    except Exception as e:
+        return {"error": str(e)}
+
+    if medium is None:
+        return {
+            "error": (
+                "Minimal medium computation was infeasible — the requested "
+                f"min_objective_value ({min_objective_value}) likely exceeds the maximum "
+                "achievable growth rate. Try a lower value or open_exchanges=True."
+            )
+        }
+
+    series = medium if isinstance(medium, _pd.Series) else medium.iloc[:, 0]
+    rows = [{"exchange_reaction": rid, "import_flux": float(val)} for rid, val in series.items()]
+    rows.sort(key=lambda d: d["exchange_reaction"])
+
+    return {
+        "status": "success",
+        "min_objective_value": min_objective_value,
+        "minimize_components": minimize_components,
+        "open_exchanges": open_exchanges,
+        "component_count": len(rows),
+        "minimal_medium": rows,
+    }
+
+
+def build_model_with_mackinac(
+    genome_id: str,
+    username: str,
+    password: str,
+    source: str = "patric",
+    model_id: str = None,
+) -> dict:
+    """
+    Reconstruct a genome-scale metabolic model from a PATRIC genome using ModelSEED,
+    via Mackinac, and load it as a COBRA model.
+
+    Core functions (mackinac package):
+      mackinac.get_token(username, password)                  — authenticate to PATRIC/ModelSEED
+      mackinac.reconstruct_modelseed_model(genome_id, source) — build & gap-fill a draft model
+      mackinac.create_cobra_model_from_modelseed_model(id)    — convert to a COBRApy model
+
+    Requires PATRIC account credentials and live internet access to the ModelSEED
+    web service. The reconstructed model is saved as SBML and loaded into the session.
+    """
+    try:
+        import mackinac
+    except ImportError:
+        return {"error": "The 'mackinac' package is not installed. Run: pip install mackinac"}
+
+    # 1. Authenticate to the PATRIC/ModelSEED web service.
+    try:
+        mackinac.get_token(username, password)
+    except Exception as e:
+        return {"error": f"Authentication to PATRIC/ModelSEED failed: {e}"}
+
+    # 2. Reconstruct (and gap-fill) a draft ModelSEED model from the genome.
+    try:
+        stats = mackinac.reconstruct_modelseed_model(genome_id, source=source)
+    except Exception as e:
+        return {"error": f"ModelSEED reconstruction failed for genome '{genome_id}': {e}"}
+
+    seed_model_id = None
+    if isinstance(stats, dict):
+        seed_model_id = stats.get("id") or stats.get("ref")
+    if not seed_model_id:
+        seed_model_id = genome_id
+
+    # 3. Convert the ModelSEED model into a COBRApy model.
+    try:
+        cobra_model = mackinac.create_cobra_model_from_modelseed_model(seed_model_id)
+    except Exception as e:
+        return {"error": f"Could not convert ModelSEED model '{seed_model_id}' to a COBRA model: {e}"}
+
+    if not model_id:
+        model_id = f"{genome_id}_modelseed"
+    cobra_model.id = model_id
+
+    output_dir = os.path.join(session_dir, "mackinac") if session_dir else "mackinac"
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, f"{model_id}.xml")
+    try:
+        write_sbml_model(cobra_model, out_path)
+    except Exception as e:
+        return {"error": f"Model reconstructed but could not be saved as SBML: {e}"}
+
+    model_manager.models[model_id] = cobra_model
+    model_manager.current_model_id = model_id
+    if cobra_model.objective:
+        model_manager.objective = True
+
+    return {
+        "status": "success",
+        "model_id": model_id,
+        "genome_id": genome_id,
+        "source": source,
+        "output_file": out_path,
+        "reactions": len(cobra_model.reactions),
+        "metabolites": len(cobra_model.metabolites),
+        "genes": len(cobra_model.genes),
+    }
+
+
+def _objective_reaction_coeffs(model):
+    """Return {reaction: coefficient} for the model's linear objective."""
+    from cobra.util.solver import linear_reaction_coefficients
+    return linear_reaction_coefficients(model)
+
+
+def _resolve_knockouts(model, knockout_genes, knockout_reactions):
+    """Resolve gene/reaction knockout targets (str or list) to model objects.
+
+    Returns (gene_objs, rxn_objs, errors). Uses the same fuzzy matching as the
+    rest of tools.py so users can pass ids or names.
+    """
+    def _as_list(x):
+        if x is None:
+            return []
+        if isinstance(x, str):
+            return [t.strip() for t in x.split(",") if t.strip()]
+        return list(x)
+
+    gene_objs, rxn_objs, errors = [], [], []
+    seen_g, seen_r = set(), set()
+
+    for name in _as_list(knockout_genes):
+        tag, payload = _find_gene(model, name)
+        g = payload if tag == "exact" else (payload[0] if payload else None)
+        if g is None:
+            errors.append({"gene": name, "reason": "not found"})
+        elif g.id not in seen_g:
+            gene_objs.append(g)
+            seen_g.add(g.id)
+
+    for name in _as_list(knockout_reactions):
+        tag, payload = _find_reaction(model, name)
+        r = payload if tag == "exact" else (payload[0] if payload else None)
+        if r is None:
+            errors.append({"reaction": name, "reason": "not found"})
+        elif r.id not in seen_r:
+            rxn_objs.append(r)
+            seen_r.add(r.id)
+
+    return gene_objs, rxn_objs, errors
+
+
+def _flux_change_report(reference, perturbed, label, top_n=10):
+    """Summarise the largest flux changes between two cobra Solutions.
+
+    Returns a dict with the top_n reactions by absolute flux change and, if the
+    full table is large, writes it to a CSV under the session directory.
+    """
+    import pandas as _pd
+    diff = (perturbed.fluxes - reference.fluxes)
+    table = _pd.DataFrame({
+        "reaction_id": diff.index,
+        "wild_type_flux": reference.fluxes.values,
+        "perturbed_flux": perturbed.fluxes.values,
+        "flux_change": diff.values,
+    })
+    table["abs_change"] = table["flux_change"].abs()
+    table = table.sort_values("abs_change", ascending=False).drop(columns="abs_change")
+
+    out = {"top_flux_changes": table.head(top_n).round(6).to_dict(orient="records")}
+    changed = table[table["flux_change"].abs() > 1e-6]
+    out["reactions_with_changed_flux"] = int(len(changed))
+    if len(changed) > top_n and session_dir:
+        out_dir = os.path.join(session_dir, label)
+        os.makedirs(out_dir, exist_ok=True)
+        csv_path = os.path.join(out_dir, f"{label}_flux_changes.csv")
+        table.round(6).to_csv(csv_path, index=False)
+        out["full_flux_table"] = csv_path
+    return out
+
+
+def run_moma(knockout_reactions=None, knockout_genes=None, linear: bool = True) -> dict:
+    """
+    Assess the metabolic impact of a knockout using MOMA
+    (Minimization Of Metabolic Adjustment).
+
+    Core cobrapy function: cobra.flux_analysis.moma.moma.
+    Computes the wild-type flux distribution first, then knocks out the given
+    genes/reactions and finds the feasible flux distribution closest to wild type.
+    At least one of knockout_reactions / knockout_genes must be provided.
+    """
+    from cobra.flux_analysis import moma as _moma
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    if not model.objective.expression:
+        return {"error": "No objective function is set on the model. Set an objective before running MOMA."}
+
+    _apply_uploaded_bounds(model)
+
+    gene_objs, rxn_objs, errors = _resolve_knockouts(model, knockout_genes, knockout_reactions)
+    if not gene_objs and not rxn_objs:
+        return {"error": "Provide at least one valid knockout target via knockout_genes or knockout_reactions.", "unresolved": errors}
+
+    try:
+        wt = model.optimize()
+        if wt.status != "optimal":
+            return {"error": f"Wild-type optimisation was not optimal (status: {wt.status})."}
+
+        obj_coeffs = _objective_reaction_coeffs(model)
+        wt_growth = sum(c * wt.fluxes[r.id] for r, c in obj_coeffs.items())
+
+        with model:
+            for g in gene_objs:
+                g.knock_out()
+            for r in rxn_objs:
+                r.knock_out()
+            sol = _moma(model, solution=wt, linear=linear)
+
+        if sol.status != "optimal":
+            return {"error": f"MOMA did not reach an optimal solution (status: {sol.status})."}
+
+        ko_growth = sum(c * sol.fluxes[r.id] for r, c in obj_coeffs.items())
+
+        result = {
+            "status": sol.status,
+            "method": "linear MOMA" if linear else "quadratic MOMA",
+            "knocked_out_genes": [g.id for g in gene_objs],
+            "knocked_out_reactions": [r.id for r in rxn_objs],
+            "wild_type_growth": round(float(wt_growth), 6),
+            "knockout_growth": round(float(ko_growth), 6),
+            "growth_ratio": round(float(ko_growth / wt_growth), 4) if wt_growth else None,
+            "moma_distance": round(float(sol.objective_value), 6),
+        }
+        result.update(_flux_change_report(wt, sol, "moma"))
+        if errors:
+            result["unresolved_targets"] = errors
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def run_room(
+    knockout_reactions=None,
+    knockout_genes=None,
+    linear: bool = False,
+    delta: float = 0.03,
+    epsilon: float = 0.001,
+) -> dict:
+    """
+    Assess the metabolic impact of a knockout using ROOM
+    (Regulatory On/Off Minimization).
+
+    Core cobrapy function: cobra.flux_analysis.room.room.
+    Computes the wild-type flux distribution first, then knocks out the given
+    genes/reactions and finds the flux distribution that changes the on/off
+    state of the fewest reactions relative to wild type.
+    At least one of knockout_reactions / knockout_genes must be provided.
+    """
+    from cobra.flux_analysis import room as _room
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    if not model.objective.expression:
+        return {"error": "No objective function is set on the model. Set an objective before running ROOM."}
+
+    _apply_uploaded_bounds(model)
+
+    gene_objs, rxn_objs, errors = _resolve_knockouts(model, knockout_genes, knockout_reactions)
+    if not gene_objs and not rxn_objs:
+        return {"error": "Provide at least one valid knockout target via knockout_genes or knockout_reactions.", "unresolved": errors}
+
+    try:
+        wt = model.optimize()
+        if wt.status != "optimal":
+            return {"error": f"Wild-type optimisation was not optimal (status: {wt.status})."}
+
+        obj_coeffs = _objective_reaction_coeffs(model)
+        wt_growth = sum(c * wt.fluxes[r.id] for r, c in obj_coeffs.items())
+
+        with model:
+            for g in gene_objs:
+                g.knock_out()
+            for r in rxn_objs:
+                r.knock_out()
+            sol = _room(model, solution=wt, linear=linear, delta=delta, epsilon=epsilon)
+
+        if sol.status != "optimal":
+            return {"error": f"ROOM did not reach an optimal solution (status: {sol.status})."}
+
+        ko_growth = sum(c * sol.fluxes[r.id] for r, c in obj_coeffs.items())
+
+        result = {
+            "status": sol.status,
+            "method": "linear ROOM" if linear else "ROOM (MILP)",
+            "delta": delta,
+            "epsilon": epsilon,
+            "knocked_out_genes": [g.id for g in gene_objs],
+            "knocked_out_reactions": [r.id for r in rxn_objs],
+            "wild_type_growth": round(float(wt_growth), 6),
+            "knockout_growth": round(float(ko_growth), 6),
+            "growth_ratio": round(float(ko_growth / wt_growth), 4) if wt_growth else None,
+        }
+        result.update(_flux_change_report(wt, sol, "room"))
+        if errors:
+            result["unresolved_targets"] = errors
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def find_blocked_rxns(
+    reaction_names=None,
+    open_exchanges: bool = False,
+    zero_cutoff: float = None,
+) -> dict:
+    """
+    Find reactions in the loaded model that cannot carry any flux.
+
+    Core cobrapy function: cobra.flux_analysis.find_blocked_reactions.
+    Read-only — the model is not modified. Whether a reaction is blocked depends
+    on the exchange settings; set open_exchanges=True to open all exchanges first.
+    """
+    from cobra.flux_analysis import find_blocked_reactions as _fbr
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    _apply_uploaded_bounds(model)
+
+    # Resolve an optional reaction subset (ids or names, fuzzy matched).
+    reaction_list = None
+    unresolved = []
+    if reaction_names:
+        if isinstance(reaction_names, str):
+            reaction_names = [r.strip() for r in reaction_names.split(",") if r.strip()]
+        reaction_list = []
+        seen = set()
+        for name in reaction_names:
+            tag, payload = _find_reaction(model, name)
+            r = payload if tag == "exact" else (payload[0] if payload else None)
+            if r is None:
+                unresolved.append(name)
+            elif r.id not in seen:
+                reaction_list.append(r)
+                seen.add(r.id)
+        if not reaction_list:
+            return {"error": "None of the provided reactions are valid in this model.", "unresolved": unresolved}
+
+    try:
+        blocked = _fbr(
+            model,
+            reaction_list=reaction_list,
+            zero_cutoff=zero_cutoff,
+            open_exchanges=open_exchanges,
+        )
+    except Exception as e:
+        return {"error": str(e)}
+
+    blocked_ids = sorted(r.id if hasattr(r, "id") else str(r) for r in blocked)
+    considered = len(reaction_list) if reaction_list is not None else len(model.reactions)
+
+    base = {
+        "blocked_reaction_count": len(blocked_ids),
+        "reactions_considered": considered,
+        "open_exchanges": open_exchanges,
+    }
+    if unresolved:
+        base["unresolved_reactions"] = unresolved
+
+    if len(blocked_ids) > 5:
+        import pandas as _pd
+        out_dir = os.path.join(session_dir, "blocked")
+        os.makedirs(out_dir, exist_ok=True)
+        csv_path = os.path.join(out_dir, "blocked_reactions.csv")
+        _pd.DataFrame({"reaction_id": blocked_ids}).to_csv(csv_path, index=False)
+        base["first_5"] = blocked_ids[:5]
+        base["message"] = f"{len(blocked_ids)} blocked reactions found. Full list saved to {csv_path}."
+        return base
+    base["blocked_reactions"] = blocked_ids
+    return base
+
+
+def remove_genes(gene_names, remove_reactions: bool = True) -> dict:
+    """
+    Permanently remove genes from the loaded model and simplify gene-reaction rules.
+
+    Core cobrapy function: cobra.manipulation.delete.remove_genes.
+    Unlike a knockout (which only constrains flux), this deletes the genes from
+    the model object itself. The modified model REPLACES the loaded one. With
+    remove_reactions=True, reactions left with no gene support are removed too.
+    """
+    from cobra.manipulation import remove_genes as _remove_genes
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    if isinstance(gene_names, str):
+        gene_names = [g.strip() for g in gene_names.split(",") if g.strip()]
+
+    valid_genes, unresolved, seen = [], [], set()
+    for name in gene_names:
+        tag, payload = _find_gene(model, name)
+        g = payload if tag == "exact" else (payload[0] if payload else None)
+        if g is None:
+            unresolved.append(name)
+        elif g.id not in seen:
+            valid_genes.append(g)
+            seen.add(g.id)
+
+    if not valid_genes:
+        return {"error": "None of the provided genes are valid in this model.", "unresolved": unresolved}
+
+    genes_before = len(model.genes)
+    reactions_before = len(model.reactions)
+    removed_gene_ids = [g.id for g in valid_genes]
+
+    try:
+        _remove_genes(model, valid_genes, remove_reactions=remove_reactions)
+    except Exception as e:
+        return {"error": str(e)}
+
+    # remove_genes mutates the model in place; it is the same object stored in
+    # model_manager.models, so the session already reflects the change.
+    result = {
+        "status": "success",
+        "model_id": model_manager.current_model_id,
+        "genes_requested_for_removal": removed_gene_ids,
+        "genes_before": genes_before,
+        "genes_after": len(model.genes),
+        "genes_removed": genes_before - len(model.genes),
+        "reactions_before": reactions_before,
+        "reactions_after": len(model.reactions),
+        "reactions_removed": reactions_before - len(model.reactions),
+        "remove_reactions": remove_reactions,
+        "note": "Genes were permanently removed from the loaded model and GPRs were simplified.",
+    }
+    if unresolved:
+        result["unresolved_genes"] = unresolved
+    return result
+
+
+def gapfill(
+    universal_model_file: str = None,
+    lower_bound: float = 0.05,
+    demand_reactions: bool = True,
+    exchange_reactions: bool = False,
+    iterations: int = 1,
+) -> dict:
+    """
+    Find the minimal set of reactions that restores growth to the loaded model
+    (analysis-oriented gap filling).
+
+    Core cobrapy function: cobra.flux_analysis.gapfilling.gapfill.
+    Candidate reactions are drawn from a 'universal' model: either an uploaded
+    SBML file (universal_model_file) or, if none is given, the BiGG universal
+    model (downloaded on demand — requires internet). The loaded model is NOT
+    modified; the suggested reactions are reported.
+    """
+    from cobra.flux_analysis import gapfill as _gapfill
+    from cobra.io import read_sbml_model as _read_sbml, load_json_model as _load_json
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    _apply_uploaded_bounds(model)
+
+    # ── Obtain the universal model ──────────────────────────────────────────────
+    universal = None
+    universal_source = None
+    if universal_model_file:
+        path = universal_model_file
+        if not os.path.isabs(path) and session_uploads_dir:
+            path = os.path.join(session_uploads_dir, path)
+        if not os.path.exists(path):
+            return {"error": f"Universal model file not found: {path}"}
+        try:
+            universal = _read_sbml(path)
+            universal_source = f"uploaded file ({os.path.basename(path)})"
+        except Exception as e:
+            return {"error": f"Could not read universal model SBML: {e}"}
+    else:
+        # Fall back to the BiGG universal model (downloaded and cached locally).
+        import requests as _requests
+        cache_dir = os.path.join(session_dir, "gapfill") if session_dir else "gapfill"
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, "bigg_universal_model.json")
+        if not os.path.exists(cache_path):
+            url = "http://bigg.ucsd.edu/static/namespace/universal_model.json"
+            try:
+                resp = _requests.get(url, timeout=60)
+                resp.raise_for_status()
+                with open(cache_path, "wb") as fh:
+                    fh.write(resp.content)
+            except Exception as e:
+                return {"error": (
+                    "No universal model file was provided and the BiGG universal model "
+                    f"could not be downloaded ({e}). Upload a universal SBML file instead."
+                )}
+        try:
+            universal = _load_json(cache_path)
+            universal_source = "BiGG universal model"
+        except Exception as e:
+            return {"error": f"Could not load the BiGG universal model: {e}"}
+
+    # ── Run gap filling ─────────────────────────────────────────────────────────
+    try:
+        solutions = _gapfill(
+            model,
+            universal=universal,
+            lower_bound=lower_bound,
+            demand_reactions=demand_reactions,
+            exchange_reactions=exchange_reactions,
+            iterations=iterations,
+        )
+    except Exception as e:
+        return {"error": (
+            f"Gap filling failed: {e}. This often means the identifiers in the universal "
+            "model do not match the loaded model's namespace, or no solution exists for the "
+            "requested lower_bound."
+        )}
+
+    runs = []
+    for i, rxn_set in enumerate(solutions, start=1):
+        runs.append({
+            "iteration": i,
+            "reaction_count": len(rxn_set),
+            "reactions": [
+                {"id": r.id, "name": r.name, "reaction": r.build_reaction_string()}
+                for r in rxn_set
+            ],
+        })
+
+    return {
+        "status": "success",
+        "model_id": model_manager.current_model_id,
+        "universal_source": universal_source,
+        "lower_bound": lower_bound,
+        "demand_reactions": demand_reactions,
+        "exchange_reactions": exchange_reactions,
+        "iterations": iterations,
+        "solutions": runs,
+        "note": (
+            "These reactions would restore growth if added to the model. The loaded model "
+            "was not modified; add the chosen reactions with add_reaction if desired."
+        ),
+    }
+
+
+def gapfill_model_with_carveme(
+    media: str,
+    mediadb: str = None,
+    universe: str = None,
+    model_id: str = None,
+) -> dict:
+    """
+    Gap-fill the currently loaded model for one or more growth media using
+    CarveMe's `gapfill` command (reconstruction-oriented gap filling).
+
+    CarveMe CLI: gapfill <input.xml> -m <media> --fbc2 [--mediadb <file>]
+                 [-u {grampos,gramneg}] -o <output.xml>
+    (media is required; universe defaults to 'bacteria'.)
+
+    The loaded model is written to SBML (fbc2 format, hence --fbc2), gap-filled
+    against CarveMe's BiGG-based universe so it can grow on the given media, then
+    loaded back into the session. Requires CarveMe to be installed and works best
+    on CarveMe/BiGG-namespace models.
+    """
+    import subprocess as _sp
+
+    try:
+        model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+    except Exception as e:
+        return {"error": str(e)}
+
+    if not media or not str(media).strip():
+        return {"error": "media is required, e.g. 'M9' or 'LB,M9' (comma-separated growth media)."}
+    # _coerce in executor.py turns a comma-separated string into a list; CarveMe
+    # expects a single comma-separated string on the command line.
+    if isinstance(media, list):
+        media = ",".join(str(m).strip() for m in media)
+
+    output_dir = os.path.join(session_dir, "carveme_gapfill") if session_dir else "carveme_gapfill"
+    os.makedirs(output_dir, exist_ok=True)
+
+    if not model_id:
+        model_id = f"{model_manager.current_model_id}_gapfilled"
+
+    input_path = os.path.join(output_dir, f"{model_manager.current_model_id}_input.xml")
+    out_path = os.path.join(output_dir, f"{model_id}.xml")
+    try:
+        write_sbml_model(model, input_path)
+    except Exception as e:
+        return {"error": f"Could not export the loaded model to SBML for gap filling: {e}"}
+
+    # write_sbml_model produces SBML in fbc2 format, so tell CarveMe's gapfill
+    # to read it as fbc2 (its --fbc2/--cobra flags declare the input format).
+    cmd = ["gapfill", input_path, "-m", media, "-o", out_path, "--fbc2"]
+    if mediadb:
+        mediadb_path = mediadb
+        if not os.path.isabs(mediadb_path) and session_uploads_dir:
+            mediadb_path = os.path.join(session_uploads_dir, mediadb_path)
+        if not os.path.exists(mediadb_path):
+            return {"error": f"Media database file not found: {mediadb_path}"}
+        cmd += ["--mediadb", mediadb_path]
+    if universe:
+        cmd += ["-u", universe]
+
+    try:
+        result = _sp.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        return {"error": "CarveMe (gapfill) not found. Install with: pip install carveme"}
+
+    if result.returncode != 0 or not os.path.exists(out_path):
+        stderr = result.stderr.decode(errors="replace").strip() if result.stderr else ""
+        stdout = result.stdout.decode(errors="replace").strip() if result.stdout else ""
+        return {"error": "CarveMe gap filling failed to produce an output model.",
+                "detail": stderr or stdout or "No output captured."}
+
+    rxns_before = len(model.reactions)
+    try:
+        loaded_id = model_manager.load_sbml(out_path)
+        new_model = model_manager.get_current_model()
+        return {
+            "status": "success",
+            "model_id": loaded_id,
+            "media": media,
+            "universe": universe or "default",
+            "output_file": out_path,
+            "reactions_before": rxns_before,
+            "reactions_after": len(new_model.reactions),
+            "reactions_added": len(new_model.reactions) - rxns_before,
+            "metabolites": len(new_model.metabolites),
+            "genes": len(new_model.genes),
+            "note": "The gap-filled model has been loaded into the session.",
+        }
+    except Exception as e:
+        return {
+            "status": "success",
+            "warning": f"Model gap-filled but could not be auto-loaded: {e}",
+            "media": media,
+            "output_file": out_path,
+        }
+
+
 # ── Planner metadata ──────────────────────────────────────────────────────────
 # Each tool function used by the planner carries a _planner_meta attribute.
 # planner/tool_registry.py reads these to build TOOL_FN_MAP, TOOL_USER_INPUTS,
@@ -1025,10 +2485,10 @@ def set_reaction_bounds(
 
 load_model._planner_meta = {
     "name": "load_model",
-    "description": "Load a metabolic model by ID or from a local SBML file",
+    "description": "Load a metabolic model into the session by organism name or model ID (auto-resolved from BiGG and BioModels) or from a locally uploaded SBML file — must be done before any analysis step.",
     "params": {
         "model_id": {
-            "description": "Model identifier (e.g. 'iHsa', 'e_coli_core') or path to a local SBML file (.xml/.sbml)",
+            "description": "Pass exactly what the user typed — a model ID or organism name, verbatim. Do not translate or infer.",
             "default": None,
             "required": True,
         }
@@ -1037,13 +2497,13 @@ load_model._planner_meta = {
 
 run_fba._planner_meta = {
     "name": "run_fba",
-    "description": "Run Flux Balance Analysis on the currently loaded model",
+    "description": "Optimise the model's objective (typically biomass/growth) and compute steady-state fluxes for every reaction — the foundational step for most metabolic analyses.",
     "params": {},
 }
 
 run_fva._planner_meta = {
     "name": "run_fva",
-    "description": "Run Flux Variability Analysis to compute min/max flux ranges",
+    "description": "Compute the minimum and maximum achievable flux for every reaction while holding the objective at a set fraction of its optimum — reveals which reactions are fixed, flexible, or blocked under the current constraints.",
     "params": {
         "rxn_names": {
             "description": "Specific reaction names to analyze. Leave empty to run FVA on all reactions.",
@@ -1051,8 +2511,8 @@ run_fva._planner_meta = {
             "required": False,
         },
         "fraction_of_optimum": {
-            "description": "Fraction of the optimal objective value to maintain (default: 1.0)",
-            "default": 1.0,
+            "description": "Fraction of the optimal objective value to maintain (default: 0.9)",
+            "default": 0.9,
             "required": False,
         },
     },
@@ -1060,7 +2520,7 @@ run_fva._planner_meta = {
 
 gene_knockout_simulation._planner_meta = {
     "name": "gene_knockout_simulation",
-    "description": "Simulate single or double gene knockouts and assess growth impact",
+    "description": "Simulate the deletion of one or more genes by constraining their associated reactions to zero flux (following GPR rules) and report the resulting change in growth rate — identifies lethal and growth-reducing gene targets.",
     "params": {
         "gene_names": {
             "description": "List of gene names to knock out (e.g. ['b0001', 'b0002'])",
@@ -1077,7 +2537,7 @@ gene_knockout_simulation._planner_meta = {
 
 reaction_knockout_simulation._planner_meta = {
     "name": "reaction_knockout_simulation",
-    "description": "Simulate single or double reaction knockouts",
+    "description": "Simulate the removal of one or more reactions from the network and report the resulting change in growth rate — identifies reaction essentiality and growth-coupled deletions.",
     "params": {
         "reaction_names": {
             "description": "List of reaction names to knock out",
@@ -1094,7 +2554,7 @@ reaction_knockout_simulation._planner_meta = {
 
 sample_metabolic_model._planner_meta = {
     "name": "sample_metabolic_model",
-    "description": "Sample flux distributions using ACHR or OptGP",
+    "description": "Draw random steady-state flux distributions from the feasible space using ACHR or OptGP — captures metabolic flexibility and variability that a single FBA optimum cannot reveal.",
     "params": {
         "reaction_count": {
             "description": "Number of reactions to include in sampling. Leave empty to sample all reactions.",
@@ -1106,7 +2566,7 @@ sample_metabolic_model._planner_meta = {
 
 set_model_objective._planner_meta = {
     "name": "set_model_objective",
-    "description": "Set the objective function before running FBA",
+    "description": "Define which reaction to maximise or minimise before running FBA or pFBA — required when the model has no default objective or when switching between optimisation targets (e.g. ATP production vs. biomass).",
     "params": {
         "reaction_id": {
             "description": "Reaction ID to use as objective (e.g. 'BIOMASS_Ec_core'). Fuzzy matched if not found exactly.",
@@ -1123,7 +2583,7 @@ set_model_objective._planner_meta = {
 
 visualize_escher._planner_meta = {
     "name": "visualize_escher",
-    "description": "Run FBA and render the flux distribution on an Escher metabolic map (HTML). Auto-detects the map for the loaded model. Must follow any FBA or optimization step.",
+    "description": "Overlay FBA flux values onto an interactive Escher pathway map (saved as HTML) — makes it easy to see which reactions are active, saturated, or inactive, and to communicate results visually. Auto-detects the best map for the loaded model.",
     "params": {
         "map_name": {
             "description": "Escher map name to use (e.g. 'e_coli_core.Central metabolism'). Leave empty to auto-detect from the loaded model.",
@@ -1135,7 +2595,7 @@ visualize_escher._planner_meta = {
 
 list_escher_maps._planner_meta = {
     "name": "list_escher_maps",
-    "description": "List all available Escher map names (use when auto-detection fails)",
+    "description": "List all Escher pathway map names available for the loaded model — use when auto-detection fails or to browse which maps exist before calling visualize_escher.",
     "params": {},
 }
 
@@ -1153,19 +2613,19 @@ run_pfba._planner_meta = {
 
 run_geometric_fba._planner_meta = {
     "name": "run_geometric_fba",
-    "description": "Run Geometric FBA (gFBA) — returns a unique, centred flux distribution by iteratively bounding the convex hull of the feasible flux space",
+    "description": "Run Geometric FBA (gFBA) to obtain a unique, centred flux solution by iteratively tightening the feasible flux polytope — avoids the arbitrary optima of standard FBA and gives a single representative state for the network.",
     "params": {},
 }
 
 run_memote_report._planner_meta = {
     "name": "run_memote_report",
-    "description": "Run the memote quality test suite on the loaded model and return a concise pass/fail summary with a full HTML report",
+    "description": "Score the model against the memote quality standard — checks annotation completeness, stoichiometric consistency, metabolic coverage, and SBO term usage, returning a pass/fail summary and a full HTML report.",
     "params": {},
 }
 
 add_reaction._planner_meta = {
     "name": "add_reaction",
-    "description": "Add a new reaction (with stoichiometry, bounds, GPR, subsystem) to the currently loaded model",
+    "description": "Extend the model by adding a new reaction with stoichiometry, flux bounds, gene-reaction rule, and subsystem — used for manual curation, adding missing pathways, or incorporating hypothetical reactions before analysis.",
     "params": {
         "reaction_id": {
             "description": "SBML-valid reaction ID (letters/digits/underscores, starts with letter or _). E.g. 'R_3OAS140'",
@@ -1207,7 +2667,7 @@ add_reaction._planner_meta = {
 
 set_reaction_bounds._planner_meta = {
     "name": "set_reaction_bounds",
-    "description": "Set or change flux bounds on one or more reactions in the loaded model (single reaction or CSV batch)",
+    "description": "Constrain reactions to specific flux ranges to model nutrient availability, gene expression levels, or experimental conditions — accepts a single reaction or a CSV batch file.",
     "params": {
         "reaction_id": {
             "description": "Reaction ID or name to update (single-reaction mode). Fuzzy matched if no exact match.",
@@ -1226,6 +2686,365 @@ set_reaction_bounds._planner_meta = {
         },
         "csv_path": {
             "description": "Path to a CSV file (columns: rxn_id, lb, ub) to update bounds in batch. Relative paths resolve against the session uploads directory.",
+            "default": None,
+            "required": False,
+            "input_type": "file",
+            "file_types": ["csv"],
+        },
+    },
+}
+
+
+build_model_with_carveme._planner_meta = {
+    "name": "build_model_with_carveme",
+    "description": "Reconstruct a draft genome-scale metabolic model from a protein or DNA FASTA file using CarveMe. Prodigal is run automatically if a DNA/genome sequence is detected.",
+    "params": {
+        "fasta_file": {
+            "description": "Path to the input FASTA file — either protein sequences (.faa) or a genome sequence (.fna/.fa/.fasta). DNA input triggers automatic Prodigal gene calling.",
+            "default": None,
+            "required": True,
+            "input_type": "file",
+            "file_types": ["faa", "fasta", "fa", "fna"],
+        },
+        "model_id": {
+            "description": "ID/name for the output model (used as filename stem). Defaults to the input filename stem if not provided.",
+            "default": None,
+            "required": False,
+        },
+        "gram": {
+            "description": "Gram stain for CarveMe template selection: 'grampos' (Gram-positive) or 'gramneg' (Gram-negative). Leave empty to use the default universal template.",
+            "default": None,
+            "required": False,
+        },
+    },
+}
+
+
+build_context_model_with_corda._planner_meta = {
+    "name": "build_context_model_with_corda",
+    "description": (
+        "Build a context-specific (e.g. tissue- or condition-specific) genome-scale "
+        "model from the currently loaded base/reference model using CORDA. The user "
+        "only needs to upload ONE CSV: raw gene expression, gene confidence scores, "
+        "or reaction confidence scores — the type is auto-detected. Expression is "
+        "binned into confidence classes automatically."
+    ),
+    "params": {
+        "data_csv": {
+            "description": (
+                "Path to the uploaded CSV (relative paths resolve against the session "
+                "uploads directory). Two columns: an id column and a value column. Gene "
+                "ids may use any namespace the model annotates — Ensembl, Entrez, UniProt, "
+                "RefSeq or gene symbols (version suffixes are stripped) — so files from "
+                "GTEx/Expression Atlas/GEO often work directly. The value is either a "
+                "continuous expression value (TPM/FPKM/counts) or an integer confidence in "
+                "{-1,0,1,2,3}."
+            ),
+            "default": None,
+            "required": True,
+            "input_type": "file",
+            "file_types": ["csv", "tsv", "txt"],
+        },
+        "data_type": {
+            "description": (
+                "How to interpret the CSV: 'auto' (default, recommended), 'expression', "
+                "'gene_confidence', or 'reaction_confidence'."
+            ),
+            "default": "auto",
+            "required": False,
+        },
+        "model_id": {
+            "description": "ID/name for the reconstructed model. Defaults to '<base_model>_corda'.",
+            "default": None,
+            "required": False,
+        },
+        "high_percentile": {
+            "description": "Expression percentile at/above which a gene is high confidence (3). Default 75.",
+            "default": 75.0,
+            "required": False,
+        },
+        "mid_percentile": {
+            "description": "Expression percentile for medium confidence (2). Default 50.",
+            "default": 50.0,
+            "required": False,
+        },
+        "low_percentile": {
+            "description": "Expression percentile for low confidence (1); below it genes are treated as not expressed (-1). Default 25.",
+            "default": 25.0,
+            "required": False,
+        },
+        "keep_objective_high": {
+            "description": "Force the model's objective reaction(s) to high confidence so the context model can still grow. Default True.",
+            "default": True,
+            "required": False,
+        },
+        "met_prod": {
+            "description": "Optional comma-separated metabolite IDs that the reconstructed model must be able to produce.",
+            "default": None,
+            "required": False,
+        },
+    },
+}
+
+
+find_essential_genes._planner_meta = {
+    "name": "find_essential_genes",
+    "description": "Systematically knock out every gene in the model and report those whose deletion abolishes growth — identifies potential drug targets and genes indispensable for viability.",
+    "params": {
+        "threshold": {
+            "description": "Minimal objective (growth) flux to be considered viable. Leave empty to use the default (1% of the maximal objective).",
+            "default": None,
+            "required": False,
+        }
+    },
+}
+
+find_essential_reactions._planner_meta = {
+    "name": "find_essential_reactions",
+    "description": "Systematically knock out every reaction and report those whose removal abolishes growth — reveals metabolic bottlenecks and candidate targets for growth inhibition.",
+    "params": {
+        "threshold": {
+            "description": "Minimal objective (growth) flux to be considered viable. Leave empty to use the default (1% of the maximal objective).",
+            "default": None,
+            "required": False,
+        }
+    },
+}
+
+check_model_consistency._planner_meta = {
+    "name": "check_model_consistency",
+    "description": "Run FASTCC to identify and remove flux-inconsistent (permanently blocked) reactions — produces a consistent subnetwork where every reaction can carry non-zero flux, a prerequisite for reliable FVA and flux sampling.",
+    "params": {
+        "flux_threshold": {
+            "description": "Flux threshold used by FASTCC to decide consistency (default 1.0).",
+            "default": 1.0,
+            "required": False,
+        }
+    },
+}
+
+check_mass_balance._planner_meta = {
+    "name": "check_mass_balance",
+    "description": "Verify that every reaction conserves mass and charge — unbalanced reactions can inflate flux values or mask infeasibility and should be corrected before analysis.",
+    "params": {},
+}
+
+prune_unused_reactions._planner_meta = {
+    "name": "prune_unused_reactions",
+    "description": "Remove dead-end reactions (those with no metabolites assigned) that can arise during reconstruction — cleans up the model in-place before analysis.",
+    "params": {},
+}
+
+prune_unused_metabolites._planner_meta = {
+    "name": "prune_unused_metabolites",
+    "description": "Remove orphaned metabolites not participating in any reaction — tidies the model in-place after manual edits or gene/reaction deletions.",
+    "params": {},
+}
+
+find_minimal_medium._planner_meta = {
+    "name": "find_minimal_medium",
+    "description": "Identify the smallest set of nutrient imports that sustains a target growth rate — useful for designing minimal growth media, predicting auxotrophies, and reducing medium complexity.",
+    "params": {
+        "min_objective_value": {
+            "description": "Minimum growth rate (objective value) the medium must support (default 0.1).",
+            "default": 0.1,
+            "required": False,
+        },
+        "minimize_components": {
+            "description": "If True, minimise the NUMBER of medium components instead of total import flux (slower, mixed-integer). Default False.",
+            "default": False,
+            "required": False,
+        },
+        "open_exchanges": {
+            "description": "If True, ignore current bounds and open all exchange reactions before searching. Default False.",
+            "default": False,
+            "required": False,
+        },
+    },
+}
+
+build_model_with_mackinac._planner_meta = {
+    "name": "build_model_with_mackinac",
+    "description": "Reconstruct a genome-scale model from a PATRIC genome via ModelSEED using Mackinac (requires PATRIC credentials and internet), then load it as a COBRA model",
+    "params": {
+        "genome_id": {
+            "description": "PATRIC genome ID to reconstruct a model for (e.g. '226186.12').",
+            "default": None,
+            "required": True,
+        },
+        "username": {
+            "description": "PATRIC/ModelSEED account username for authentication.",
+            "default": None,
+            "required": True,
+        },
+        "password": {
+            "description": "PATRIC/ModelSEED account password for authentication.",
+            "default": None,
+            "required": True,
+        },
+        "source": {
+            "description": "Genome source database: 'patric' (default) or 'rast'.",
+            "default": "patric",
+            "required": False,
+        },
+        "model_id": {
+            "description": "ID/name for the reconstructed model. Defaults to '<genome_id>_modelseed'.",
+            "default": None,
+            "required": False,
+        },
+    },
+}
+
+run_moma._planner_meta = {
+    "name": "run_moma",
+    "description": "Predict the post-knockout flux state by finding the distribution closest to wild type (minimising flux re-routing) — more biologically realistic than FBA re-optimisation when the cell cannot fully adapt to the perturbation.",
+    "params": {
+        "knockout_reactions": {
+            "description": "Reaction IDs/names to knock out (single value or comma-separated). At least one knockout target (reactions or genes) is required.",
+            "default": None,
+            "required": False,
+        },
+        "knockout_genes": {
+            "description": "Gene IDs/names to knock out (single value or comma-separated). At least one knockout target (reactions or genes) is required.",
+            "default": None,
+            "required": False,
+        },
+        "linear": {
+            "description": "Use linear (L1, faster) MOMA instead of quadratic (L2). Default True.",
+            "default": True,
+            "required": False,
+        },
+    },
+}
+
+run_room._planner_meta = {
+    "name": "run_room",
+    "description": "Predict the post-knockout flux state by minimising the number of reactions that switch on/off relative to wild type — models the assumption that cells minimise regulatory changes, complementing MOMA's flux-distance approach.",
+    "params": {
+        "knockout_reactions": {
+            "description": "Reaction IDs/names to knock out (single value or comma-separated). At least one knockout target (reactions or genes) is required.",
+            "default": None,
+            "required": False,
+        },
+        "knockout_genes": {
+            "description": "Gene IDs/names to knock out (single value or comma-separated). At least one knockout target (reactions or genes) is required.",
+            "default": None,
+            "required": False,
+        },
+        "linear": {
+            "description": "Use the linear ROOM relaxation instead of the exact MILP. Default False.",
+            "default": False,
+            "required": False,
+        },
+        "delta": {
+            "description": "Relative tolerance range (additive). Default 0.03.",
+            "default": 0.03,
+            "required": False,
+        },
+        "epsilon": {
+            "description": "Absolute tolerance range (multiplicative). Default 0.001.",
+            "default": 0.001,
+            "required": False,
+        },
+    },
+}
+
+find_blocked_rxns._planner_meta = {
+    "name": "find_blocked_rxns",
+    "description": "Identify reactions forced to carry zero flux under all conditions within current bounds — flags dead-end pathways, missing transporters, and connectivity gaps in the network. Read-only; does not modify the model.",
+    "params": {
+        "reaction_names": {
+            "description": "Specific reaction IDs/names to check (single value or comma-separated). Leave empty to check all reactions.",
+            "default": None,
+            "required": False,
+        },
+        "open_exchanges": {
+            "description": "Open all exchange reactions to high flux before testing (default False). Use when blockage is due to a closed medium.",
+            "default": False,
+            "required": False,
+        },
+        "zero_cutoff": {
+            "description": "Flux value treated as effectively zero. Leave empty to use the model's tolerance.",
+            "default": None,
+            "required": False,
+        },
+    },
+}
+
+remove_genes._planner_meta = {
+    "name": "remove_genes",
+    "description": "Permanently delete genes from the model and rewrite all GPR rules to reflect the removal — use for reconstruction curation or correcting incorrect gene associations. Optionally also removes reactions that lose all gene support.",
+    "params": {
+        "gene_names": {
+            "description": "Gene IDs/names to remove permanently (single value or comma-separated).",
+            "default": None,
+            "required": True,
+        },
+        "remove_reactions": {
+            "description": "Also remove reactions left without any gene support after removal. Default True.",
+            "default": True,
+            "required": False,
+        },
+    },
+}
+
+gapfill._planner_meta = {
+    "name": "gapfill",
+    "description": "Identify the smallest set of reactions from a universal database that, when added, restores growth — pinpoints metabolic gaps from incomplete reconstruction. The loaded model is NOT modified; suggested reactions must be reviewed and added manually.",
+    "params": {
+        "universal_model_file": {
+            "description": "Optional SBML file of candidate (universal) reactions. If omitted, the BiGG universal model is downloaded and used (requires internet).",
+            "default": None,
+            "required": False,
+            "input_type": "file",
+            "file_types": ["xml", "sbml"],
+        },
+        "lower_bound": {
+            "description": "Minimum objective (growth) flux the gap-filled model must achieve. Default 0.05.",
+            "default": 0.05,
+            "required": False,
+        },
+        "demand_reactions": {
+            "description": "Consider adding demand reactions for metabolites. Default True.",
+            "default": True,
+            "required": False,
+        },
+        "exchange_reactions": {
+            "description": "Consider adding exchange (uptake) reactions for all metabolites. Default False.",
+            "default": False,
+            "required": False,
+        },
+        "iterations": {
+            "description": "Number of gap-filling rounds; each finds an alternative solution. Default 1.",
+            "default": 1,
+            "required": False,
+        },
+    },
+}
+
+gapfill_model_with_carveme._planner_meta = {
+    "name": "gapfill_model_with_carveme",
+    "description": "Gap-fill the loaded model for given growth media using CarveMe's gapfill command (reconstruction-oriented). Adds reactions so the model grows on the media, then reloads it. Requires CarveMe; best on CarveMe/BiGG-namespace models",
+    "params": {
+        "media": {
+            "description": "Growth media the model must grow on, e.g. 'M9' or 'LB,M9' (comma-separated). Required.",
+            "default": None,
+            "required": True,
+        },
+        "mediadb": {
+            "description": "Optional media database file (CSV/TSV) defining custom media compositions.",
+            "default": None,
+            "required": False,
+            "input_type": "file",
+            "file_types": ["csv", "tsv"],
+        },
+        "universe": {
+            "description": "CarveMe pre-built universe to draw candidate reactions from: 'grampos' or 'gramneg'. Leave empty for the default ('bacteria').",
+            "default": None,
+            "required": False,
+        },
+        "model_id": {
+            "description": "ID/name for the gap-filled output model. Defaults to '<loaded_model>_gapfilled'.",
             "default": None,
             "required": False,
         },
@@ -1251,10 +3070,10 @@ load_model_tool = FunctionTool.from_defaults(
     fn=load_model,
     name="load_model",
     description=(
-        "Loads a metabolic model by its BiGG or BioModels ID. "
-        "Use the plain model ID exactly as it appears in the database — for example: "
-        "'e_coli_core', 'iJN1463', 'iML1515'. "
-        "Do NOT use prefixes like 'BIGG:' or 'BioModels:' — just pass the bare ID string."
+        "Loads a metabolic model from BiGG or BioModels. "
+        "Pass EXACTLY what the user typed — do not translate, infer, or guess a model ID. "
+        "If the user said 'rat', pass 'rat'. If they said 'e_coli_core', pass 'e_coli_core'. "
+        "The tool handles ID resolution and search internally."
     ),
     return_direct=return_direct
 )
@@ -1290,23 +3109,30 @@ gene_info_tool = FunctionTool.from_defaults(
     description="Returns the metadata related to a given Gene by Name: gene_id, name, Total Reactions, Reactions",
     return_direct=return_direct
 )
-# Change the description
 run_fba_tool = FunctionTool.from_defaults(
     fn=run_fba,
-    name="run_flux_balance_analysis",
-    description="Uses a bounds dictionary loaded using `set_reaction_bounds_for_FBA()` for Flux Balance Analysis (FBA).",
+    name="run_fba",
+    description="Run Flux Balance Analysis on the currently loaded model.",
     return_direct=return_direct
 )
 set_objective_tool = FunctionTool.from_defaults(
     fn=set_model_objective,
-    name="set_model_objective_value",
-    description="Sets the objective for the current metabolic model given a dictonary of Reaction_id: coefficient pairs and an optional direction value.",
+    name="set_model_objective",
+    description=(
+        "Set the objective function for the currently loaded model. "
+        "Provide a reaction ID (fuzzy matched if not exact) and an optimization direction "
+        "('max' or 'min'). Must be called before running FBA."
+    ),
     return_direct=return_direct
 )
 run_fva_tool = FunctionTool.from_defaults(
     fn=run_fva,
-    name="run_flux_variability_analysis",
-    description="Runs Flux Variability Analysis (FVA) on the model. Optionally accepts a list of reaction names (rxn_names); if not provided or empty, runs FVA on all reactions in the model. Also accepts a fraction_of_optimum value (default 0.9).",
+    name="run_fva",
+    description=(
+        "Run Flux Variability Analysis (FVA) on the currently loaded model. "
+        "Optionally accepts a list of reaction names (rxn_names); if not provided or empty, "
+        "runs FVA on all reactions. Also accepts fraction_of_optimum (default 0.9)."
+    ),
     return_direct=return_direct
 )
 gene_knockout_tool = FunctionTool.from_defaults(
@@ -1342,21 +3168,21 @@ visualize_escher_tool = FunctionTool.from_defaults(
 
 memote_report_tool = FunctionTool.from_defaults(
     fn=run_memote_report,
-    name="run_memote_quality_report",
+    name="run_memote_report",
     description=(
-        "Runs the memote test suite on the currently loaded metabolic model. "
-        "Returns a concise quality summary (passed/failed tests with messages) "
-        "and saves a full HTML report to the session directory."
+        "Run the memote quality test suite on the currently loaded metabolic model. "
+        "Returns a concise pass/fail summary with messages and saves a full HTML report "
+        "to the session directory."
     ),
     return_direct=return_direct
 )
 
 run_pfba_tool = FunctionTool.from_defaults(
     fn=run_pfba,
-    name="run_parsimonious_fba",
+    name="run_pfba",
     description=(
-        "Runs Parsimonious FBA (pFBA) on the currently loaded model. "
-        "Maximises the objective while minimising total absolute flux, giving an "
+        "Run Parsimonious FBA (pFBA) on the currently loaded model. "
+        "Maximises the objective while minimising total absolute flux to find the most "
         "enzyme-efficient solution. Optionally accepts fraction_of_optimum (default 1.0)."
     ),
     return_direct=return_direct
@@ -1375,10 +3201,10 @@ run_geometric_fba_tool = FunctionTool.from_defaults(
 
 add_reaction_tool = FunctionTool.from_defaults(
     fn=add_reaction,
-    name="add_reaction_to_model",
+    name="add_reaction",
     description=(
-        "Adds a new reaction to the currently loaded metabolic model. "
-        "Accepts a reaction ID, equation string (e.g. '1.0 A + B --> C'), "
+        "Add a new reaction to the currently loaded metabolic model. "
+        "Accepts a reaction ID, equation string (e.g. '1.0 malACP_c + h_c --> co2_c + ACP_c'), "
         "optional reaction name, flux bounds, gene-reaction rule, and subsystem."
     ),
     return_direct=return_direct
@@ -1397,6 +3223,209 @@ set_reaction_bounds_tool = FunctionTool.from_defaults(
     return_direct=return_direct,
 )
 
+build_model_with_carveme_tool = FunctionTool.from_defaults(
+    fn=build_model_with_carveme,
+    name="build_model_with_carveme",
+    description=(
+        "Reconstruct a draft genome-scale metabolic model from a FASTA file using CarveMe. "
+        "Accepts protein sequences (.faa) or a whole genome (.fna/.fa) — DNA input is "
+        "automatically handled by running Prodigal for gene calling (meta mode). "
+        "The reconstructed model is saved as SBML and loaded into the active session."
+    ),
+    return_direct=return_direct,
+)
+
+build_context_model_with_corda_tool = FunctionTool.from_defaults(
+    fn=build_context_model_with_corda,
+    name="build_context_model_with_corda",
+    description=(
+        "Build a context-specific (tissue/condition-specific) genome-scale model from the "
+        "currently loaded base/reference model using CORDA. The user uploads a single CSV — "
+        "raw gene expression, gene confidence scores, or reaction confidence scores — and the "
+        "type is auto-detected (expression is binned into CORDA confidence classes "
+        "automatically). The reconstructed model is saved as SBML and loaded into the session."
+    ),
+    return_direct=return_direct,
+)
+
+find_essential_genes_tool = FunctionTool.from_defaults(
+    fn=find_essential_genes,
+    name="find_essential_genes",
+    description=(
+        "Finds the essential genes of the currently loaded model using "
+        "cobra.flux_analysis.find_essential_genes. A gene is essential if knocking "
+        "out all reactions that depend on it abolishes growth. Optionally accepts a "
+        "growth threshold (defaults to 1% of the maximal objective). Requires an objective."
+    ),
+    return_direct=return_direct,
+)
+
+find_essential_reactions_tool = FunctionTool.from_defaults(
+    fn=find_essential_reactions,
+    name="find_essential_reactions",
+    description=(
+        "Finds the essential reactions of the currently loaded model using "
+        "cobra.flux_analysis.find_essential_reactions. A reaction is essential if "
+        "constraining its flux to zero abolishes growth. Optionally accepts a growth "
+        "threshold (defaults to 1% of the maximal objective). Requires an objective."
+    ),
+    return_direct=return_direct,
+)
+
+check_model_consistency_tool = FunctionTool.from_defaults(
+    fn=check_model_consistency,
+    name="check_model_consistency",
+    description=(
+        "Checks the consistency of the loaded model with FASTCC "
+        "(cobra.flux_analysis.fastcc) and removes blocked (flux-inconsistent) "
+        "reactions. The cleaned consistent model replaces the loaded model. "
+        "Optionally accepts a flux_threshold (default 1.0)."
+    ),
+    return_direct=return_direct,
+)
+
+check_mass_balance_tool = FunctionTool.from_defaults(
+    fn=check_mass_balance,
+    name="check_mass_balance",
+    description=(
+        "Checks the mass and charge balance of every reaction in the loaded model "
+        "(cobra.manipulation.check_mass_balance) and reports the unbalanced reactions "
+        "with their element/charge imbalance. An empty result means all reactions are balanced."
+    ),
+    return_direct=return_direct,
+)
+
+prune_unused_reactions_tool = FunctionTool.from_defaults(
+    fn=prune_unused_reactions,
+    name="prune_unused_reactions",
+    description=(
+        "Removes reactions with no assigned metabolites from the loaded model "
+        "(cobra.manipulation.prune_unused_reactions). The pruned model replaces the loaded model."
+    ),
+    return_direct=return_direct,
+)
+
+prune_unused_metabolites_tool = FunctionTool.from_defaults(
+    fn=prune_unused_metabolites,
+    name="prune_unused_metabolites",
+    description=(
+        "Removes metabolites not involved in any reaction from the loaded model "
+        "(cobra.manipulation.prune_unused_metabolites). The pruned model replaces the loaded model."
+    ),
+    return_direct=return_direct,
+)
+
+find_minimal_medium_tool = FunctionTool.from_defaults(
+    fn=find_minimal_medium,
+    name="find_minimal_medium",
+    description=(
+        "Finds the minimal growth medium for the loaded model "
+        "(cobra.medium.minimal_medium) — the import fluxes/components needed to sustain "
+        "at least a target growth rate. Accepts min_objective_value (default 0.1), "
+        "minimize_components (minimise number of ingredients, slower), and open_exchanges."
+    ),
+    return_direct=return_direct,
+)
+
+build_model_with_mackinac_tool = FunctionTool.from_defaults(
+    fn=build_model_with_mackinac,
+    name="build_model_with_mackinac",
+    description=(
+        "Reconstructs a genome-scale metabolic model from a PATRIC genome via the "
+        "ModelSEED web service using Mackinac, then loads it as a COBRA model. Requires "
+        "a PATRIC genome_id, account username and password, and live internet access. "
+        "The reconstructed model is saved as SBML and loaded into the active session."
+    ),
+    return_direct=return_direct,
+)
+
+request_file_upload_tool = FunctionTool.from_defaults(
+    fn=request_file_upload,
+    name="request_file_upload",
+    description=(
+        "Call this tool when you need the user to upload a file before you can proceed. "
+        "Provide param (the exact parameter name the file maps to), "
+        "file_types (comma-separated accepted extensions, e.g. 'csv,tsv' or 'faa,fasta,fa,fna'), "
+        "and description (one sentence explaining what the file must contain). "
+        "After calling this tool, stop immediately — do not call any other tool in the same turn."
+    ),
+    return_direct=return_direct,
+)
+
+run_moma_tool = FunctionTool.from_defaults(
+    fn=run_moma,
+    name="run_moma",
+    description=(
+        "Assesses the metabolic impact of a knockout using MOMA "
+        "(cobra.flux_analysis.moma). Computes the wild-type flux distribution, "
+        "knocks out the given genes and/or reactions, and finds the feasible flux "
+        "distribution closest to wild type. Accepts knockout_reactions, knockout_genes "
+        "(at least one required) and linear (default True)."
+    ),
+    return_direct=return_direct,
+)
+
+run_room_tool = FunctionTool.from_defaults(
+    fn=run_room,
+    name="run_room",
+    description=(
+        "Assesses the metabolic impact of a knockout using ROOM "
+        "(cobra.flux_analysis.room). Minimises the number of reactions whose on/off "
+        "state changes relative to wild type after knocking out the given genes and/or "
+        "reactions. Accepts knockout_reactions, knockout_genes (at least one required), "
+        "linear (default False), delta (0.03) and epsilon (0.001)."
+    ),
+    return_direct=return_direct,
+)
+
+find_blocked_rxns_tool = FunctionTool.from_defaults(
+    fn=find_blocked_rxns,
+    name="find_blocked_rxns",
+    description=(
+        "Finds reactions in the loaded model that cannot carry any flux "
+        "(cobra.flux_analysis.find_blocked_reactions). Read-only. Optionally accepts a "
+        "subset of reaction_names, open_exchanges (open all exchanges first, default False) "
+        "and zero_cutoff (flux treated as zero)."
+    ),
+    return_direct=return_direct,
+)
+
+remove_genes_tool = FunctionTool.from_defaults(
+    fn=remove_genes,
+    name="remove_genes",
+    description=(
+        "Permanently removes genes from the loaded model and simplifies gene-reaction "
+        "rules (cobra.manipulation.remove_genes). Unlike a knockout, the genes are deleted "
+        "from the model itself; with remove_reactions=True (default) reactions left without "
+        "gene support are also removed. The modified model replaces the loaded one."
+    ),
+    return_direct=return_direct,
+)
+
+gapfill_tool = FunctionTool.from_defaults(
+    fn=gapfill,
+    name="gapfill",
+    description=(
+        "Finds the minimal set of reactions that restores growth to the loaded model "
+        "(cobra.flux_analysis.gapfill). Candidate reactions come from an uploaded universal "
+        "SBML file, or the BiGG universal model if none is provided (downloaded on demand). "
+        "Reports the suggested reactions; the loaded model is not modified."
+    ),
+    return_direct=return_direct,
+)
+
+gapfill_model_with_carveme_tool = FunctionTool.from_defaults(
+    fn=gapfill_model_with_carveme,
+    name="gapfill_model_with_carveme",
+    description=(
+        "Gap-fills the currently loaded model for one or more growth media using CarveMe's "
+        "`gapfill` command (reconstruction-oriented). Adds reactions from CarveMe's BiGG-based "
+        "universe so the model can grow on the given media, then reloads the gap-filled model "
+        "into the session. Requires CarveMe and works best on CarveMe/BiGG-namespace models."
+    ),
+    return_direct=return_direct,
+)
+
 
 
 
@@ -1406,6 +3435,5 @@ set_reaction_bounds_tool = FunctionTool.from_defaults(
 
 # model_manager = ModelManager()
 # model_manager.load_model_by_id('e_coli_core')
-# file_path = r"E:\INTERNSHIP\IITM\metabolic\uploads\bounds_data\e_coli_bounds.csv"
-# model_manager.bounds_dict = pd.read_csv(file_path).values.tolist()
+# model_manager.bounds_dict = pd.read_csv("bounds_data/e_coli_bounds.csv").values.tolist()
 # print(run_fba())

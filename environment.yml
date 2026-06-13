@@ -1,0 +1,37 @@
+name: agentic_cobra
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - prodigal
+  - glpk
+  - pip:
+    - tqdm
+    - torch
+    - cobra
+    - fastapi
+    - uvicorn
+    - pydantic
+    - requests
+    - streamlit
+    - accelerate
+    - transformers
+    - ollama
+    - python-libsbml
+    - python-multipart
+    - llama-index-core==0.14.22
+    - llama-index-llms-groq
+    - llama-index-llms-huggingface
+    - llama-index-llms-ollama
+    - llama-index-llms-google-genai
+    - llama-index-llms-llama-cpp
+    - chromadb>=0.5.0
+    - sentence-transformers>=3.0.0
+    - mackinac
+    - memote
+    - escher
+    - carveme
+    - corda

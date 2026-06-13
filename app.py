@@ -2,7 +2,12 @@ import streamlit as st
 import requests
 import os
 
-API_BASE = "http://localhost:8000"
+API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
+
+# Plan steps can run genome-scale reconstructions (e.g. CORDA on Recon3D /
+# Human-GEM) that legitimately take many minutes. Use a generous client timeout
+# so the frontend doesn't abandon a step that the backend is still computing.
+PLAN_EXEC_TIMEOUT = 3600  # seconds
 
 st.set_page_config(page_title="Metabolic Model Assistant", layout="wide")
 st.markdown(
@@ -73,13 +78,57 @@ st.markdown(
         margin: 0;
         white-space: nowrap;
     }
-    /* Push textarea text right so it doesn't overlap with the toggle (~85px wide) */
+    /* Push textarea text right so it doesn't overlap with Plan toggle + attach button */
     [data-testid="stChatInput"] textarea {
-        padding-left: 6rem !important;
+        padding-left: 9rem !important;
     }
     /* Bottom padding for main content area */
     .main .block-container {
         padding-bottom: 90px !important;
+    }
+
+    /* File attach '+' button — same fixed-overlay trick as Plan toggle.
+       st.markdown('<span class="chat-attach-marker">') renders inside an element-container
+       as a sibling to the button's element-container. :has() lets us grab that next sibling
+       and apply position:fixed to it (the container, not the button child). */
+    [data-testid="element-container"]:has(.chat-attach-marker) + [data-testid="element-container"] {
+        position: fixed !important;
+        left: 11rem !important;
+        bottom: 4.5rem !important;
+        z-index: 1002 !important;
+        width: auto !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    [data-testid="element-container"]:has(.chat-attach-marker) + [data-testid="element-container"] button {
+        border-radius: 50% !important;
+        width: 2.2rem !important;
+        height: 2.2rem !important;
+        min-width: 0 !important;
+        padding: 0 !important;
+        font-size: 1.2rem !important;
+        line-height: 1 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        border: none !important;
+        background: transparent !important;
+        color: inherit !important;
+        opacity: 0.65;
+        transition: opacity 0.15s, background 0.15s, transform 0.1s !important;
+        cursor: pointer !important;
+    }
+    [data-testid="element-container"]:has(.chat-attach-marker) + [data-testid="element-container"] button:hover {
+        background: rgba(255,255,255,0.1) !important;
+        opacity: 1 !important;
+        transform: scale(1.12) !important;
+    }
+    [data-testid="element-container"]:has(.chat-attach-marker) + [data-testid="element-container"] button:active {
+        transform: scale(0.95) !important;
+        opacity: 0.9 !important;
     }
     </style>
     """,
@@ -91,7 +140,9 @@ if "model_id" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "disclaimer" not in st.session_state:
-    st.session_state.disclaimer = False
+    st.session_state.disclaimer = True
+if "app_launched" not in st.session_state:
+    st.session_state.app_launched = False
 if "llm" not in st.session_state:
     st.session_state.llm = False
 if "session_ready" not in st.session_state:
@@ -108,6 +159,14 @@ if "exec_results" not in st.session_state:
     st.session_state.exec_results = []
 if "exec_steps" not in st.session_state:
     st.session_state.exec_steps = []
+if "pending_chat_upload" not in st.session_state:
+    st.session_state.pending_chat_upload = None  # None or {"param", "file_types", "description"}
+if "chat_upload_sig" not in st.session_state:
+    st.session_state.chat_upload_sig = None  # "{name}:{size}" sentinel to prevent duplicate uploads on rerun
+if "chat_attached_file" not in st.session_state:
+    st.session_state.chat_attached_file = None  # filename staged for next message
+if "chat_attach_sig" not in st.session_state:
+    st.session_state.chat_attach_sig = None
 
 def _clear_plan_widget_state():
     prefixes = ("plan_include_", "plan_input_", "plan_comment_", "plan_insert_open_", "plan_insert_desc_", "plan_fb_open_", "plan_fb_btn_", "plan_newmet_", "newmet_results_", "newmet_error_")
@@ -187,7 +246,7 @@ def plan_mode_ui():
                         r = requests.post(
                             f"{API_BASE}/plan/execute_step",
                             json={"step": step},
-                            timeout=300,
+                            timeout=PLAN_EXEC_TIMEOUT,
                         )
                         if r.status_code == 200:
                             api_resp = r.json()
@@ -239,7 +298,7 @@ def plan_mode_ui():
                                         "error": display_result.get("error", ""),
                                         "history": retry_history,
                                     },
-                                    timeout=300,
+                                    timeout=PLAN_EXEC_TIMEOUT,
                                 )
                                 if rr.status_code == 200:
                                     rd = rr.json()
@@ -344,9 +403,49 @@ def plan_mode_ui():
                         st.session_state.exec_cursor = len(exec_steps)
                         st.rerun()
         else:
-            st.success("All steps executed.")
+            st.markdown("### Plan Complete")
+            st.markdown(f"> **Your question:** {plan['query']}")
+            st.divider()
+
+            if "plan_final_summary" not in st.session_state:
+                with st.spinner("Generating answer…"):
+                    try:
+                        r = requests.post(
+                            f"{API_BASE}/plan/summarize",
+                            json={
+                                "query": plan["query"],
+                                "plan_summary": plan.get("summary", ""),
+                                "steps": exec_steps,
+                                "results": exec_results,
+                            },
+                            timeout=60,
+                        )
+                        st.session_state.plan_final_summary = (
+                            r.json().get("summary", "") if r.status_code == 200 else ""
+                        )
+                    except Exception:
+                        st.session_state.plan_final_summary = ""
+
+            if st.session_state.get("plan_final_summary"):
+                st.markdown(st.session_state.plan_final_summary)
+            else:
+                st.success("All steps executed.")
+
+            with st.expander("Step-by-step results", expanded=False):
+                for i, step in enumerate(exec_steps):
+                    res = exec_results[i] if i < len(exec_results) else {}
+                    interp = res.get("__interpretation__", "")
+                    if "error" in res:
+                        st.error(f"**{step['step_name']}** — failed: {res['error']}")
+                    else:
+                        st.success(f"**{step['step_name']}**")
+                        if interp:
+                            st.markdown(interp)
+
+            st.divider()
             if st.button("Back to plan editor"):
                 st.session_state.exec_cursor = -1
+                st.session_state.pop("plan_final_summary", None)
                 st.rerun()
         return
 
@@ -354,6 +453,8 @@ def plan_mode_ui():
         return
 
     # ── Phase B: Interactive plan editor ─────────────────────────────────────
+    if plan.get("query"):
+        st.markdown(f"> {plan['query']}")
     st.divider()
     st.caption(plan.get("summary", ""))
 
@@ -435,14 +536,67 @@ def plan_mode_ui():
                 )
                 if step.get("user_inputs"):
                     st.markdown("**Inputs**")
-                    for param, spec in step["user_inputs"].items():
-                        req = " *" if spec.get("required") else ""
-                        label = param.replace("_", " ").title() + req
-                        st.text_input(
-                            label,
-                            help=spec.get("description"),
-                            key=f"plan_input_{i}_{param}",
-                        )
+                    _params = list(step["user_inputs"].items())
+                    _j = 0
+                    while _j < len(_params):
+                        _param, _spec = _params[_j]
+                        _req = " *" if _spec.get("required") else ""
+                        _label = _param.replace("_", " ").title() + _req
+
+                        if _spec.get("input_type") == "file":
+                            # File inputs stay full-width
+                            text_key = f"plan_input_{i}_{_param}"
+                            up = st.file_uploader(
+                                _label,
+                                type=_spec.get("file_types"),
+                                help=_spec.get("description"),
+                                key=f"plan_file_{i}_{_param}",
+                            )
+                            if up is not None:
+                                sig_key = f"plan_file_sig_{i}_{_param}"
+                                sig = f"{up.name}:{up.size}"
+                                if st.session_state.get(sig_key) != sig:
+                                    try:
+                                        res = requests.post(
+                                            f"{API_BASE}/upload_data_file/",
+                                            files={"file": (up.name, up.getvalue())},
+                                            timeout=120,
+                                        )
+                                        if res.status_code == 200:
+                                            st.session_state[text_key] = res.json()["filename"]
+                                            st.session_state[sig_key] = sig
+                                        else:
+                                            st.error(f"Upload failed: {res.json().get('detail', res.text)}")
+                                    except Exception as ex:
+                                        st.error(f"Upload failed: {ex}")
+                            current = st.session_state.get(text_key, "")
+                            if current:
+                                st.caption(f"Uploaded: `{current}`")
+                            _j += 1
+                        else:
+                            # Pair consecutive text inputs into two columns
+                            _next_is_text = (
+                                _j + 1 < len(_params) and
+                                _params[_j + 1][1].get("input_type") != "file"
+                            )
+                            if _next_is_text:
+                                _np, _ns = _params[_j + 1]
+                                _nlabel = _np.replace("_", " ").title() + (" *" if _ns.get("required") else "")
+                                _ic1, _ic2 = st.columns(2)
+                                with _ic1:
+                                    _dv = _spec.get("value")
+                                    _ph = (f"defaults to {_dv}" if _dv else "optional") if not _spec.get("required") else None
+                                    st.text_input(_label, help=_spec.get("description"), key=f"plan_input_{i}_{_param}", placeholder=_ph)
+                                with _ic2:
+                                    _ndv = _ns.get("value")
+                                    _nph = (f"defaults to {_ndv}" if _ndv else "optional") if not _ns.get("required") else None
+                                    st.text_input(_nlabel, help=_ns.get("description"), key=f"plan_input_{i}_{_np}", placeholder=_nph)
+                                _j += 2
+                            else:
+                                _dv = _spec.get("value")
+                                _ph = (f"optional, defaults to {_dv}" if _dv else "optional") if not _spec.get("required") else None
+                                st.text_input(_label, help=_spec.get("description"), key=f"plan_input_{i}_{_param}", placeholder=_ph)
+                                _j += 1
 
                 # Dynamic new-metabolite fields for add_reaction steps
                 if step.get("tool") == "add_reaction":
@@ -593,13 +747,148 @@ def name_session_dialog():
             except Exception as e:
                 st.error(f"Could not reach backend: {e}")
 
-@st.dialog("DISCLAIMER!")
-def popup():
-    st.write(f"This app assumes that the user has prior knowledge about Constraint Based Metabolic Models (CBBMs)")
-    st.html("<span class='big-dialog'></span>")
-    if st.button("Proceed"):
-        st.session_state.disclaimer = True
-        st.rerun()
+def welcome_page():
+    st.markdown(
+        """
+        <style>
+        /* ── Welcome page global resets ── */
+        .mp-page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 3vh 1rem 2vh 1rem;
+            text-align: center;
+        }
+        /* Title */
+        .mp-title {
+            font-size: 4rem;
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            margin: 0 0 0.75rem 0;
+        }
+        .mp-title-meta { color: #e8e8e8; }
+        .mp-title-pilot {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ffa94d 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        /* Tagline */
+        .mp-tagline {
+            font-size: 0.95rem;
+            color: #686878;
+            line-height: 1.55;
+            max-width: 480px;
+            margin: 0 auto 1.6rem auto;
+        }
+        /* Mode cards row */
+        .mp-cards {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            width: 100%;
+            max-width: 660px;
+            margin: 0 auto 1.4rem auto;
+        }
+        .mp-card {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 1.1rem 1.2rem 1rem 1.2rem;
+            text-align: left;
+            position: relative;
+            overflow: hidden;
+        }
+        .mp-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #ff6b6b, #ffa94d);
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+        .mp-card:hover::before { opacity: 1; }
+        .mp-card:hover { border-color: rgba(255, 107, 107, 0.25); }
+        .mp-card-icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.45rem;
+            display: block;
+        }
+        .mp-card-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #ddd;
+            margin: 0 0 0.55rem 0;
+            letter-spacing: 0.01em;
+        }
+        .mp-card-desc {
+            font-size: 0.83rem;
+            color: #666;
+            line-height: 1.65;
+            margin: 0;
+        }
+        /* Style the Streamlit primary button on this page */
+        div[data-testid="stButton"] > button[kind="primary"] {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8c42 100%);
+            border: none;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            padding: 0.65rem 2.5rem;
+            box-shadow: 0 4px 20px rgba(255, 107, 107, 0.3);
+            transition: box-shadow 0.2s, transform 0.15s;
+        }
+        div[data-testid="stButton"] > button[kind="primary"]:hover {
+            box-shadow: 0 6px 28px rgba(255, 107, 107, 0.45);
+            transform: translateY(-1px);
+        }
+        </style>
+
+        <div class="mp-page">
+            <h1 class="mp-title">
+                <span class="mp-title-meta">Meta</span><span class="mp-title-pilot">Pilot</span>
+            </h1>
+            <p class="mp-tagline">
+                An AI agent for constraint-based metabolic modelling. Analyse COBRA-compatible
+                models through natural language, or define a research objective and let the
+                agent plan and execute the workflow automatically.
+            </p>
+            <div class="mp-cards">
+                <div class="mp-card">
+                    <span class="mp-card-icon">💬</span>
+                    <p class="mp-card-name">MetaInteract</p>
+                    <p class="mp-card-desc">
+                        Direct conversational interface — chat with the AI agent to query,
+                        manipulate, and analyse metabolic models in real time, one message
+                        at a time.
+                    </p>
+                </div>
+                <div class="mp-card">
+                    <span class="mp-card-icon">📋</span>
+                    <p class="mp-card-name">MetaPlan</p>
+                    <p class="mp-card-desc">
+                        Planning mode — describe a high-level analysis goal and the agent
+                        generates, then executes, a structured step-by-step plan
+                        automatically.
+                    </p>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Launch button — centred via columns
+    _, btn_col, _ = st.columns([2, 1, 2])
+    with btn_col:
+        if st.button("Launch  →", type="primary", use_container_width=True):
+            st.session_state.app_launched = True
+            st.rerun()
+
 
 
 @st.dialog("🧠 LLM Configuration", width="large")
@@ -671,6 +960,35 @@ def end_session_dialog():
         except Exception:
             pass
         os._exit(0)
+
+@st.dialog("📎 Attach a data file")
+def attach_file_dialog():
+    st.caption("The filename will be included in your next message so the agent can use it.")
+    f = st.file_uploader(
+        "Upload file",
+        type=["csv", "tsv", "txt", "xml", "sbml", "faa", "fasta", "fa", "fna"],
+        key="dialog_attach_file",
+        label_visibility="collapsed",
+    )
+    if f is not None:
+        if st.button("Attach", type="primary", use_container_width=True, key="dialog_attach_btn"):
+            sig = f"{f.name}:{f.size}"
+            if st.session_state.chat_attach_sig != sig:
+                try:
+                    res = requests.post(
+                        f"{API_BASE}/upload_data_file/",
+                        files={"file": (f.name, f.getvalue())},
+                        timeout=120,
+                    )
+                    if res.status_code == 200:
+                        st.session_state.chat_attached_file = res.json()["filename"]
+                        st.session_state.chat_attach_sig = sig
+                        st.rerun()
+                    else:
+                        st.error(f"Upload failed: {res.json().get('detail', res.text)}")
+                except Exception as ex:
+                    st.error(f"Upload failed: {ex}")
+
 
 @st.dialog("📁 Model Management", width="large")
 def model_management_dialog():
@@ -744,15 +1062,15 @@ def model_management_dialog():
                 st.error(f"Failed to set sampler: {e}")
 
 
-if not st.session_state.session_ready:
+if not st.session_state.app_launched:
+    welcome_page()
+elif not st.session_state.session_ready:
     name_session_dialog()
-elif not st.session_state.disclaimer:
-    popup()
 else:
     # ── Header: title + 3 toolbar icon buttons ───────────────────────────────
     col1, col2, col3, col4 = st.columns([84, 4, 4, 4])
     with col1:
-        header_title = "📋 Plan Mode" if st.session_state.plan_mode else "💬 Agentic Chat"
+        header_title = "📋 MetaPlan" if st.session_state.plan_mode else "💬 MetaInteract"
         st.header(header_title)
     with col2:
         st.markdown('<div class="toolbar-btn">', unsafe_allow_html=True)
@@ -784,13 +1102,83 @@ else:
                 else:
                     st.chat_message("assistant").write(msg)
 
+            # ── Attached file badge (shown when a file is staged via the + button) ──
+            if st.session_state.chat_attached_file:
+                c_badge, c_rm = st.columns([12, 1])
+                with c_badge:
+                    st.caption(f"📎 `{st.session_state.chat_attached_file}` — will be sent with your next message")
+                with c_rm:
+                    if st.button("✕", key="chat_attach_clear", help="Remove attached file"):
+                        st.session_state.chat_attached_file = None
+                        st.session_state.chat_attach_sig = None
+                        st.rerun()
+
+            # ── Inline file upload widget for chat mode ────────────────────────
+            if st.session_state.pending_chat_upload is not None:
+                pup = st.session_state.pending_chat_upload
+                with st.container(border=True):
+                    st.markdown(f"**Upload required:** {pup['description']}")
+                    file_types = [ft.strip().lstrip(".") for ft in pup["file_types"]] if pup.get("file_types") else None
+                    uploaded_file = st.file_uploader(
+                        f"File for `{pup['param']}`",
+                        type=file_types,
+                        key="chat_upload_widget",
+                    )
+                    c_confirm, c_cancel = st.columns(2)
+                    with c_confirm:
+                        if uploaded_file is not None:
+                            sig = f"{uploaded_file.name}:{uploaded_file.size}"
+                            if st.button("Upload & Continue", key="chat_upload_confirm", type="primary", use_container_width=True):
+                                if st.session_state.chat_upload_sig != sig:
+                                    try:
+                                        res = requests.post(
+                                            f"{API_BASE}/upload_data_file/",
+                                            files={"file": (uploaded_file.name, uploaded_file.getvalue())},
+                                            timeout=120,
+                                        )
+                                        if res.status_code == 200:
+                                            filename = res.json()["filename"]
+                                            st.session_state.chat_upload_sig = sig
+                                            st.session_state.pending_chat_upload = None
+                                            follow_up = (
+                                                f"The file has been uploaded. Filename: {filename}. "
+                                                f"Please proceed using this file for the {pup['param']} parameter."
+                                            )
+                                            st.session_state.chat_history.append(("user", f"[Uploaded: {filename}]"))
+                                            with st.spinner("Agent is processing uploaded file…"):
+                                                try:
+                                                    agent_res = requests.post(f"{API_BASE}/chat/", json={"message": follow_up}, timeout=300)
+                                                    if agent_res.status_code == 200:
+                                                        data = agent_res.json()
+                                                        if data.get("model_id"):
+                                                            st.session_state.model_id = data["model_id"]
+                                                        if data.get("needs_upload"):
+                                                            st.session_state.pending_chat_upload = data["needs_upload"]
+                                                            st.session_state.chat_upload_sig = None
+                                                        st.session_state.chat_history.append(("agent", data["response"]))
+                                                    else:
+                                                        st.session_state.chat_history.append(("agent", f"⚠️ Error: {agent_res.text}"))
+                                                except Exception as ex:
+                                                    st.session_state.chat_history.append(("agent", f"⚠️ Exception: {ex}"))
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Upload failed: {res.json().get('detail', res.text)}")
+                                    except Exception as ex:
+                                        st.error(f"Upload failed: {ex}")
+                    with c_cancel:
+                        if st.button("Cancel", key="chat_upload_cancel", use_container_width=True):
+                            st.session_state.pending_chat_upload = None
+                            st.session_state.chat_upload_sig = None
+                            st.session_state.chat_history.append(("agent", "Upload cancelled. You can ask again or provide a filename manually."))
+                            st.rerun()
+
         # ── Plan Mode toggle (CSS-fixed to bottom-right, above chat input) ────
         _pm = st.session_state.plan_mode
         new_pm = st.toggle(
-            "Plan",
+            "MetaPlan",
             value=_pm,
             key="plan_mode_toggle",
-            help="Generate a step-by-step analysis plan instead of chatting directly",
+            help="Switch to MetaPlan mode to generate a step-by-step analysis plan instead of chatting directly",
         )
         if new_pm != _pm:
             st.session_state.plan_mode = new_pm
@@ -801,6 +1189,15 @@ else:
                 st.session_state.exec_steps = []
                 _clear_plan_widget_state()
             st.rerun()
+
+        # ── File attach '+' button — CSS-fixed inside chat input bar ─────────
+        # Marker span is a sibling element-container to the button.
+        # CSS :has(.chat-attach-marker) + element-container applies position:fixed to the
+        # button's wrapper — same mechanism as the Plan toggle (not the child button element).
+        if not _pm:
+            st.markdown('<span class="chat-attach-marker"></span>', unsafe_allow_html=True)
+            if st.button("＋", key="chat_attach_open", help="Attach a data file"):
+                attach_file_dialog()
 
         placeholder = "What do you want to achieve?" if _pm else "Ask about the model…"
         user_input = st.chat_input(placeholder)
@@ -826,16 +1223,28 @@ else:
                         st.error(f"Backend error: {e}")
             else:
                 msg = user_input.strip()
+                # Clear any pending upload if the user types a new message
+                if st.session_state.pending_chat_upload is not None:
+                    st.session_state.pending_chat_upload = None
+                    st.session_state.chat_upload_sig = None
+                # Inject any staged attached file into the message
+                if st.session_state.chat_attached_file:
+                    msg = msg + f" [File attached: {st.session_state.chat_attached_file}]"
+                    st.session_state.chat_attached_file = None
+                    st.session_state.chat_attach_sig = None
                 st.session_state.chat_history.append(("user", msg))
                 with st.spinner("Agent is thinking…"):
                     try:
                         res = requests.post(f"{API_BASE}/chat/", json={"message": msg})
                         if res.status_code == 200:
                             data = res.json()
-                            response_text = data["response"]
-                            if data.get("model_id"):
-                                st.session_state.model_id = data["model_id"]
-                            st.session_state.chat_history.append(("agent", response_text))
+                            if data.get("needs_upload"):
+                                st.session_state.pending_chat_upload = data["needs_upload"]
+                                st.session_state.chat_upload_sig = None
+                            else:
+                                if data.get("model_id"):
+                                    st.session_state.model_id = data["model_id"]
+                            st.session_state.chat_history.append(("agent", data["response"]))
                         else:
                             error_msg = res.json().get("detail", "Unknown error")
                             st.session_state.chat_history.append(("agent", f"⚠️ Error: {error_msg}"))

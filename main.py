@@ -19,6 +19,21 @@ from planner.planner_core import GSMPlanner
 from planner.executor import execute_step as _execute_step
 from planner.config import CHROMA_DB_PATH, COLLECTION_NAME
 
+_HF_REPO_ID = "sistasaathvik/gsm_procedural_knowledge_base"
+
+def _ensure_knowledge_base():
+    if not os.path.exists(CHROMA_DB_PATH):
+        print(f"Knowledge base not found at '{CHROMA_DB_PATH}'. Downloading from Hugging Face Hub...")
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id=_HF_REPO_ID,
+            repo_type="dataset",
+            local_dir=CHROMA_DB_PATH,
+        )
+        print("Knowledge base downloaded successfully.")
+
+_ensure_knowledge_base()
+
 SESSION_DIR: Path | None = None
 
 def _make_session_dir(name: str) -> Path:
@@ -134,6 +149,25 @@ async def upload_csv(file: UploadFile = File(...)):
         return {"status": "success", "filename": file.filename}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
+
+
+@app.post("/upload_data_file/")
+async def upload_data_file(file: UploadFile = File(...)):
+    """Save an arbitrary tool-input file (expression CSV, FASTA, bounds CSV, ...)
+    into the session uploads directory and return its filename. Unlike
+    /upload_csv/ this has no side effects on the model or bounds — tools read the
+    file themselves by resolving the filename against the session uploads dir."""
+    if SESSION_DIR is None:
+        raise HTTPException(status_code=400, detail="No active session. Create a session first.")
+    try:
+        file_path = SESSION_DIR / "uploads" / file.filename
+        contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+        await file.close()
+        return {"status": "success", "filename": file.filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
 
 @app.get("/download_model/")
@@ -283,10 +317,11 @@ def end_session(req: EndSessionRequest):
 
 @app.post("/shutdown/")
 def shutdown(background_tasks: BackgroundTasks):
+    import signal, time
+    pid = os.getpid()
     def _quit():
-        import time
         time.sleep(0.3)
-        os._exit(0)
+        os.kill(pid, signal.SIGKILL)
     background_tasks.add_task(_quit)
     return {"status": "shutting_down"}
 
@@ -300,6 +335,12 @@ class ReviseRequest(BaseModel):
 
 class ExecuteStepRequest(BaseModel):
     step: dict
+
+class SummarizeRequest(BaseModel):
+    query: str
+    plan_summary: str
+    steps: list[dict]
+    results: list[dict]
 
 
 @app.post("/plan/generate")
@@ -357,6 +398,38 @@ def plan_execute_step(req: ExecuteStepRequest):
         result = _execute_step(req.step)
         interpretation = _interpret_step_result(req.step, result)
         return {"result": result, "interpretation": interpretation}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+_PLAN_SUMMARY_SYSTEM = (
+    "You are answering a user's metabolic modeling question based on completed workflow results. "
+    "Write a direct answer (3–6 sentences) to the user's original question. "
+    "Lead with the key finding. Include critical numbers, flux values, model states, or artifact file paths. "
+    "Do not describe what the steps do — only what they found or produced. "
+    "Use plain prose; no headers or bullet points."
+)
+
+
+@app.post("/plan/summarize")
+def plan_summarize(req: SummarizeRequest):
+    try:
+        import json as _json
+        llm_fn = _make_planner_llm_fn()
+        steps_text = "\n".join(
+            f"Step {i+1} — {s.get('step_name', '')}: "
+            f"tool={s.get('tool', '')} | "
+            f"params={_json.dumps({k: v.get('value') for k, v in s.get('user_inputs', {}).items()}, default=str)} | "
+            f"result={req.results[i].get('__interpretation__', '') or _json.dumps({k: v for k, v in req.results[i].items() if k != '__interpretation__'}, default=str)[:500]}"
+            for i, s in enumerate(req.steps)
+            if i < len(req.results)
+        )
+        prompt = (
+            f"User's question: {req.query}\n\n"
+            f"Plan goal: {req.plan_summary}\n\n"
+            f"Step outcomes:\n{steps_text}"
+        )
+        return {"summary": llm_fn(prompt, _PLAN_SUMMARY_SYSTEM)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -473,8 +546,18 @@ async def chat(req: ChatRequest):
             message = f"[Current model: {model_manager.current_model_id}] {req.message}"
         else:
             message = req.message
-        response = await agent_query(message)
-        return {"response": response, "model_id": model_manager.current_model_id}
+        result = await agent_query(message)
+        if isinstance(result, dict) and result.get("__upload_required__"):
+            return {
+                "response": result["description"],
+                "needs_upload": {
+                    "param": result["param"],
+                    "file_types": result["file_types"],
+                    "description": result["description"],
+                },
+                "model_id": model_manager.current_model_id,
+            }
+        return {"response": result, "model_id": model_manager.current_model_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

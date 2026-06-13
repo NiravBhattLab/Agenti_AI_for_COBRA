@@ -1,4 +1,5 @@
 tqdm
+huggingface_hub
 torch
 cobra
 fastapi
@@ -22,3 +23,5 @@ sentence-transformers>=3.0.0
 mackinac
 memote
 escher
+carveme
+corda

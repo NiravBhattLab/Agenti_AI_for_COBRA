@@ -45,6 +45,7 @@ $ pip install -r requirements.txt
 ```
 2. **Get API KEY or use Ollama**: Supported services include OpenAI, Groq, HuggingFace or use Ollama.
 3. **Start the FastAPI Backend**: `uvicorn main:app --reload`
+   > On first run, the procedural knowledge base (~337 MB) will be automatically downloaded from [Hugging Face Hub](https://huggingface.co/datasets/sistasaathvik/gsm_procedural_knowledge_base) and saved locally. This is a one-time download.
 4. **Start the Streamlit Frontened**: `streamlit run app.py`
 
 
