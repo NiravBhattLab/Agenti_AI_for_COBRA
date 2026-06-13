@@ -10,6 +10,7 @@ dependencies:
   - glpk
   - pip:
     - tqdm
+    - huggingface_hub
     - torch
     - cobra
     - fastapi
