@@ -108,6 +108,11 @@ class ObjectiveInput(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
+class ToolInputsSubmitRequest(BaseModel):
+    tool_name: str
+    original_message: str
+    params: dict
+
 class RetryStepRequest(BaseModel):
     step: dict
     error: str
@@ -557,7 +562,51 @@ async def chat(req: ChatRequest):
                 },
                 "model_id": model_manager.current_model_id,
             }
+        if isinstance(result, dict) and result.get("__tool_inputs_required__"):
+            import json as _json
+            from planner.tool_registry import TOOL_USER_INPUTS
+            tool_name = result["tool_name"]
+            try:
+                prefilled = _json.loads(result.get("prefilled_params", "{}") or "{}")
+            except Exception:
+                prefilled = {}
+            param_specs = {}
+            for pname, pspec in TOOL_USER_INPUTS.get(tool_name, {}).items():
+                spec = dict(pspec)
+                if pname in prefilled:
+                    spec["value"] = prefilled[pname]
+                param_specs[pname] = spec
+            return {
+                "response": result["explanation"],
+                "needs_tool_inputs": {
+                    "tool_name": tool_name,
+                    "explanation": result["explanation"],
+                    "param_specs": param_specs,
+                },
+                "model_id": model_manager.current_model_id,
+            }
         return {"response": result, "model_id": model_manager.current_model_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/submit_tool_inputs")
+async def chat_submit_tool_inputs(req: ToolInputsSubmitRequest):
+    try:
+        from planner.tool_registry import TOOL_USER_INPUTS
+        from agent import reformat_tool_result
+
+        tool_spec = TOOL_USER_INPUTS.get(req.tool_name, {})
+        user_inputs = {}
+        for param, value in req.params.items():
+            spec = dict(tool_spec.get(param, {}))
+            spec["value"] = value
+            user_inputs[param] = spec
+
+        step = {"tool": req.tool_name, "user_inputs": user_inputs}
+        result = _execute_step(step)
+        response = await reformat_tool_result(req.original_message, str(result))
+        return {"response": response, "model_id": model_manager.current_model_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

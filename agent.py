@@ -12,9 +12,9 @@ from tools import (
     run_moma_tool, run_room_tool, find_blocked_rxns_tool, remove_genes_tool,
     gapfill_tool, gapfill_model_with_carveme_tool,
 )
-from tools import request_file_upload_tool
+from tools import request_file_upload_tool, request_tool_inputs_tool
 from llama_index.core.llms import ChatMessage
-from prompts import system_prompt, agent_context, llm_system_prompt, llm_prompt, chat_file_upload_context, chat_credential_context
+from prompts import system_prompt, agent_context, llm_system_prompt, llm_prompt, chat_file_upload_context, chat_credential_context, chat_tool_inputs_context
 from llama_index.core.memory import Memory
 from dotenv import load_dotenv
 import os
@@ -50,6 +50,7 @@ all_tools = [
     gapfill_tool,
     gapfill_model_with_carveme_tool,
     request_file_upload_tool,
+    request_tool_inputs_tool,
 ]
 
 def setup_agent(new_llm):
@@ -58,15 +59,27 @@ def setup_agent(new_llm):
     agent = ReActAgent(
         tools=all_tools,
         llm=llm,
-        system_prompt=system_prompt + "\n\n" + agent_context + "\n\n" + chat_file_upload_context + "\n\n" + chat_credential_context,
+        system_prompt=system_prompt + "\n\n" + agent_context + "\n\n" + chat_file_upload_context + "\n\n" + chat_credential_context + "\n\n" + chat_tool_inputs_context,
         verbose=True,
     )
+
+async def reformat_tool_result(user_input: str, tool_result: str) -> str:
+    """Reformat a tool result through the LLM for user-facing presentation."""
+    final_prompt = llm_prompt.replace("<user_input>", user_input)
+    final_prompt = final_prompt.replace("<agentResponse>", tool_result)
+    messages = [
+        ChatMessage(role="system", content=llm_system_prompt),
+        ChatMessage(role="user", content=final_prompt.strip()),
+    ]
+    response = await llm.achat(messages)
+    return str(response.message.content)
+
 
 async def agent_query(user_input: str):
     handler = agent.run(user_input)
     agent_response = await handler
 
-    # Detect if the agent called request_file_upload this turn.
+    # Detect special signal tools called this turn.
     # agent_response.tool_calls is a list[ToolSelection] with .tool_name and .tool_kwargs.
     for tc in agent_response.tool_calls:
         if getattr(tc, "tool_name", None) == "request_file_upload":
@@ -83,13 +96,14 @@ async def agent_query(user_input: str):
                 "file_types": file_types,
                 "description": kw.get("description", "Please upload the required file."),
             }
+        if getattr(tc, "tool_name", None) == "request_tool_inputs":
+            kw = tc.tool_kwargs
+            return {
+                "__tool_inputs_required__": True,
+                "tool_name": kw.get("tool_name", ""),
+                "prefilled_params": kw.get("prefilled_params", "{}"),
+                "explanation": kw.get("explanation", "Please provide the missing details."),
+            }
 
     # Normal path — second LLM reformatting call
-    final_prompt = llm_prompt.replace("<user_input>", user_input)
-    final_prompt = final_prompt.replace("<agentResponse>", str(agent_response.response.content))
-    messages = [
-        ChatMessage(role="system", content=llm_system_prompt),
-        ChatMessage(role="user", content=final_prompt.strip())
-    ]
-    response = await llm.achat(messages)
-    return str(response.message.content)
+    return await reformat_tool_result(user_input, str(agent_response.response.content))

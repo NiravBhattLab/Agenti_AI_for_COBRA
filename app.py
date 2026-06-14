@@ -167,6 +167,10 @@ if "chat_attached_file" not in st.session_state:
     st.session_state.chat_attached_file = None  # filename staged for next message
 if "chat_attach_sig" not in st.session_state:
     st.session_state.chat_attach_sig = None
+if "pending_tool_inputs" not in st.session_state:
+    st.session_state.pending_tool_inputs = None  # None or {"tool_name", "explanation", "param_specs"}
+if "tool_inputs_original_msg" not in st.session_state:
+    st.session_state.tool_inputs_original_msg = None
 
 def _clear_plan_widget_state():
     prefixes = ("plan_include_", "plan_input_", "plan_comment_", "plan_insert_open_", "plan_insert_desc_", "plan_fb_open_", "plan_fb_btn_", "plan_newmet_", "newmet_results_", "newmet_error_")
@@ -1172,6 +1176,121 @@ else:
                             st.session_state.chat_history.append(("agent", "Upload cancelled. You can ask again or provide a filename manually."))
                             st.rerun()
 
+        # ── Inline tool inputs form for chat mode ─────────────────────────────
+        if st.session_state.pending_tool_inputs is not None:
+            pti = st.session_state.pending_tool_inputs
+            tool_name = pti["tool_name"]
+            param_specs = pti.get("param_specs", {})
+            with st.container(border=True):
+                st.markdown(f"**Provide details to run `{tool_name}`**")
+                if pti.get("explanation"):
+                    st.caption(pti["explanation"])
+                _params = list(param_specs.items())
+                _j = 0
+                while _j < len(_params):
+                    _param, _spec = _params[_j]
+                    _req = " *" if _spec.get("required") else ""
+                    _label = _param.replace("_", " ").title() + _req
+                    _raw = _spec.get("value")
+                    _val = "" if _raw is None else str(_raw)
+                    _ph = ("optional" if _raw is None else f"defaults to {_raw}") if not _spec.get("required") else None
+                    if _spec.get("input_type") == "file":
+                        text_key = f"chat_tool_input_{_param}"
+                        up = st.file_uploader(
+                            _label,
+                            type=_spec.get("file_types"),
+                            help=_spec.get("description"),
+                            key=f"chat_tool_file_{_param}",
+                        )
+                        if up is not None:
+                            sig = f"{up.name}:{up.size}"
+                            sig_key = f"chat_tool_file_sig_{_param}"
+                            if st.session_state.get(sig_key) != sig:
+                                try:
+                                    res = requests.post(
+                                        f"{API_BASE}/upload_data_file/",
+                                        files={"file": (up.name, up.getvalue())},
+                                        timeout=120,
+                                    )
+                                    if res.status_code == 200:
+                                        st.session_state[text_key] = res.json()["filename"]
+                                        st.session_state[sig_key] = sig
+                                    else:
+                                        st.error(f"Upload failed: {res.json().get('detail', res.text)}")
+                                except Exception as ex:
+                                    st.error(f"Upload failed: {ex}")
+                        current = st.session_state.get(text_key, "")
+                        if current:
+                            st.caption(f"Uploaded: `{current}`")
+                        _j += 1
+                    else:
+                        _next_is_text = (
+                            _j + 1 < len(_params) and
+                            _params[_j + 1][1].get("input_type") != "file"
+                        )
+                        if _next_is_text:
+                            _np, _ns = _params[_j + 1]
+                            _nlabel = _np.replace("_", " ").title() + (" *" if _ns.get("required") else "")
+                            _nraw = _ns.get("value")
+                            _nval = "" if _nraw is None else str(_nraw)
+                            _nph = ("optional" if _nraw is None else f"defaults to {_nraw}") if not _ns.get("required") else None
+                            _ic1, _ic2 = st.columns(2)
+                            with _ic1:
+                                st.text_input(_label, value=_val, help=_spec.get("description"), key=f"chat_tool_input_{_param}", placeholder=_ph)
+                            with _ic2:
+                                st.text_input(_nlabel, value=_nval, help=_ns.get("description"), key=f"chat_tool_input_{_np}", placeholder=_nph)
+                            _j += 2
+                        else:
+                            st.text_input(_label, value=_val, help=_spec.get("description"), key=f"chat_tool_input_{_param}", placeholder=_ph)
+                            _j += 1
+
+                c_run, c_cancel = st.columns(2)
+                with c_run:
+                    if st.button("Run Tool", key="chat_tool_submit", type="primary", use_container_width=True):
+                        params = {}
+                        missing_required = []
+                        for _param, _spec in param_specs.items():
+                            if _spec.get("input_type") == "file":
+                                val = st.session_state.get(f"chat_tool_input_{_param}", "").strip()
+                            else:
+                                val = st.session_state.get(f"chat_tool_input_{_param}", "").strip()
+                            if val:
+                                params[_param] = val
+                            elif _spec.get("required"):
+                                missing_required.append(_param)
+                        if missing_required:
+                            st.warning(f"Required fields missing: {', '.join(missing_required)}")
+                        else:
+                            with st.spinner(f"Running {tool_name}…"):
+                                try:
+                                    res = requests.post(
+                                        f"{API_BASE}/chat/submit_tool_inputs",
+                                        json={
+                                            "tool_name": tool_name,
+                                            "original_message": st.session_state.tool_inputs_original_msg or "",
+                                            "params": params,
+                                        },
+                                        timeout=300,
+                                    )
+                                    if res.status_code == 200:
+                                        data = res.json()
+                                        if data.get("model_id"):
+                                            st.session_state.model_id = data["model_id"]
+                                        st.session_state.chat_history.append(("agent", data["response"]))
+                                    else:
+                                        st.session_state.chat_history.append(("agent", f"⚠️ Error: {res.json().get('detail', res.text)}"))
+                                except Exception as ex:
+                                    st.session_state.chat_history.append(("agent", f"⚠️ Exception: {ex}"))
+                            st.session_state.pending_tool_inputs = None
+                            st.session_state.tool_inputs_original_msg = None
+                            st.rerun()
+                with c_cancel:
+                    if st.button("Cancel", key="chat_tool_cancel", use_container_width=True):
+                        st.session_state.pending_tool_inputs = None
+                        st.session_state.tool_inputs_original_msg = None
+                        st.session_state.chat_history.append(("agent", "Operation cancelled. You can re-phrase your request with the specific details."))
+                        st.rerun()
+
         # ── Plan Mode toggle (CSS-fixed to bottom-right, above chat input) ────
         _pm = st.session_state.plan_mode
         new_pm = st.toggle(
@@ -1223,10 +1342,13 @@ else:
                         st.error(f"Backend error: {e}")
             else:
                 msg = user_input.strip()
-                # Clear any pending upload if the user types a new message
+                # Clear any pending upload or tool inputs form if the user types a new message
                 if st.session_state.pending_chat_upload is not None:
                     st.session_state.pending_chat_upload = None
                     st.session_state.chat_upload_sig = None
+                if st.session_state.pending_tool_inputs is not None:
+                    st.session_state.pending_tool_inputs = None
+                    st.session_state.tool_inputs_original_msg = None
                 # Inject any staged attached file into the message
                 if st.session_state.chat_attached_file:
                     msg = msg + f" [File attached: {st.session_state.chat_attached_file}]"
@@ -1241,6 +1363,9 @@ else:
                             if data.get("needs_upload"):
                                 st.session_state.pending_chat_upload = data["needs_upload"]
                                 st.session_state.chat_upload_sig = None
+                            elif data.get("needs_tool_inputs"):
+                                st.session_state.pending_tool_inputs = data["needs_tool_inputs"]
+                                st.session_state.tool_inputs_original_msg = msg
                             else:
                                 if data.get("model_id"):
                                     st.session_state.model_id = data["model_id"]

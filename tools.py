@@ -15,6 +15,17 @@ model_manager = None
 session_dir = None
 session_uploads_dir = None
 
+ZERO_FLUX_THRESHOLD = 1e-6
+
+def _clip_zero(value):
+    """Suppress LP solver numerical noise: treat |x| < 1e-6 as exactly 0."""
+    if value is None:
+        return value
+    try:
+        return 0.0 if abs(float(value)) < ZERO_FLUX_THRESHOLD else float(value)
+    except (TypeError, ValueError):
+        return value
+
 def set_model_manager(manager):
     global model_manager
     model_manager = manager
@@ -266,9 +277,10 @@ def run_fba() -> str:
             return {"error": "Wrong reaction bounds given in the uploaded CSV."}
 
     solution = model.optimize()
-    model_manager.objective = solution.objective_value
+    obj = _clip_zero(solution.objective_value)
+    model_manager.objective = obj
     return {
-        "Objective value": str(solution.objective_value),
+        "Objective value": str(obj),
         "status": str(solution.status),
     }
 
@@ -302,11 +314,12 @@ def run_pfba(fraction_of_optimum: float = 1.0) -> dict:
     if solution.status != "optimal":
         return {"error": f"pFBA did not reach an optimal solution (status: {solution.status})."}
 
-    model_manager.objective = solution.objective_value
+    obj = _clip_zero(solution.objective_value)
+    model_manager.objective = obj
     total_flux = float(solution.fluxes.abs().sum())
 
     return {
-        "Objective value": str(solution.objective_value),
+        "Objective value": str(obj),
         "Total absolute flux": str(round(total_flux, 6)),
         "fraction_of_optimum": fraction_of_optimum,
         "status": solution.status,
@@ -345,9 +358,10 @@ def run_geometric_fba() -> dict:
     if solution.status != "optimal":
         return {"error": f"Geometric FBA did not reach an optimal solution (status: {solution.status})."}
 
-    model_manager.objective = solution.objective_value
+    obj = _clip_zero(solution.objective_value)
+    model_manager.objective = obj
     return {
-        "Objective value": str(solution.objective_value),
+        "Objective value": str(obj),
         "status": solution.status,
     }
 
@@ -408,9 +422,11 @@ def run_fva(rxn_names=None, fraction_of_optimum=0.9):
         fva_df = fva_result.reset_index()
         fva_df.insert(0, "Reaction Name", [rxn.name for rxn in rxn_obj_list])
         fva_df.columns = ["Reaction Name", "Reaction ID", "Maximum Flux", "Minimum Flux"]
+        fva_df["Maximum Flux"] = fva_df["Maximum Flux"].apply(_clip_zero)
+        fva_df["Minimum Flux"] = fva_df["Minimum Flux"].apply(_clip_zero)
 
         if len(fva_df) > 5:
-            output_dir = os.path.join(session_dir, 'fva')
+            output_dir = os.path.join(session_dir or ".", 'fva')
             os.makedirs(output_dir, exist_ok=True)
             csv_path = os.path.join(output_dir, "fva_result.csv")
             fva_df.to_csv(csv_path, index=False)
@@ -483,12 +499,13 @@ def gene_knockout_simulation(gene_names, type: str) -> dict:
             "ids": "Gene(s)",
             "status": "Solver Status"
         })
+        result["Post-KO Growth"] = result["Post-KO Growth"].apply(_clip_zero)
 
         out: dict = {}
         if fuzzy_notes:
             out["fuzzy_matches"] = fuzzy_notes
         if len(result) > 5:
-            file_path = os.path.join(session_dir, "knockouts", "gene_knockout_result.csv")
+            file_path = os.path.join(session_dir or ".", "knockouts", "gene_knockout_result.csv")
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             result.to_csv(file_path, index=False)
             subset = result.iloc[:5, :5]
@@ -555,12 +572,13 @@ def reaction_knockout_simulation(reaction_names, type: str) -> dict:
             "ids": "Reaction(s)",
             "status": "Solver Status"
         })
+        result["Post-KO Growth"] = result["Post-KO Growth"].apply(_clip_zero)
 
         out: dict = {}
         if fuzzy_notes:
             out["fuzzy_matches"] = fuzzy_notes
         if len(result) > 5:
-            file_path = os.path.join(session_dir, "knockouts", "reaction_knockout_result.csv")
+            file_path = os.path.join(session_dir or ".", "knockouts", "reaction_knockout_result.csv")
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             result.to_csv(file_path, index=False)
             subset = result.iloc[:5, :5]
@@ -625,7 +643,7 @@ def sample_metabolic_model(reaction_count=1000):
             sampler = OptGPSampler(model, thinning=config["thinning"], processes=config["processes"])
         samples = sampler.sample(reaction_count)
         subset = samples.iloc[:5, :5]
-        sampling_dir = os.path.join(session_dir, 'flux_sampling')
+        sampling_dir = os.path.join(session_dir or ".", 'flux_sampling')
         os.makedirs(sampling_dir, exist_ok=True)
         csv_path = os.path.join(sampling_dir, 'flux_sampling_result.csv')
         samples.to_csv(csv_path, index=False)
@@ -696,12 +714,18 @@ def visualize_escher(map_name: str = None) -> dict:
 
         solution = model.optimize()
         if solution.status != "optimal":
-            return {"error": f"FBA did not reach an optimal solution (status: {solution.status})."}
+            return {
+                "status": "skipped",
+                "reason": (
+                    f"Cannot visualize fluxes — FBA returned '{solution.status}'. "
+                    "Check that the model has valid bounds and a feasible growth condition before running Escher."
+                ),
+            }
 
         reaction_data = solution.fluxes.to_dict()
 
         # Save HTML to session output directory
-        escher_dir = os.path.join(session_dir, "escher")
+        escher_dir = os.path.join(session_dir or ".", "escher")
         os.makedirs(escher_dir, exist_ok=True)
         safe_name = map_name.replace("/", "_").replace(" ", "_")
         filepath = os.path.join(escher_dir, f"{safe_name}_flux.html")
@@ -709,11 +733,12 @@ def visualize_escher(map_name: str = None) -> dict:
         builder = escher.Builder(map_name=map_name, model=model, reaction_data=reaction_data)
         builder.save_html(filepath)
 
+        obj = _clip_zero(solution.objective_value)
         return {
-            "response": f"Escher flux map saved to {filepath}. Map: '{map_name}'. Objective value: {solution.objective_value:.4f}",
+            "response": f"Escher flux map saved to {filepath}. Map: '{map_name}'. Objective value: {obj:.4f}",
             "file": filepath,
             "map_name": map_name,
-            "objective_value": solution.objective_value
+            "objective_value": obj
         }
     except Exception as e:
         return {"error": str(e)}
@@ -783,7 +808,7 @@ def run_memote_report() -> dict:
         section_scores = {}
         try:
             html = snapshot_report(result)
-            report_dir = os.path.join(session_dir, "memote")
+            report_dir = os.path.join(session_dir or ".", "memote")
             os.makedirs(report_dir, exist_ok=True)
             report_path = os.path.join(report_dir, "memote_report.html")
             with open(report_path, "w", encoding="utf-8") as fh:
@@ -1571,6 +1596,25 @@ def request_file_upload(param: str, file_types: str, description: str) -> dict:
     return {"__upload_required__": True, "param": param, "file_types": file_types, "description": description}
 
 
+def request_tool_inputs(tool_name: str, prefilled_params: str, explanation: str) -> dict:
+    """
+    Call this when you know which tool to run but the user has not supplied all required arguments
+    and they cannot be safely inferred from the message.
+    tool_name: exact name of the tool you intend to call (e.g. 'add_reaction').
+    prefilled_params: JSON string of argument values you CAN derive from the user's message,
+        e.g. '{"reaction_id": "GALK"}'. Use '{}' if nothing is derivable.
+    explanation: one sentence describing what you understood from the user's request.
+    After calling this, STOP — do not call any other tool in the same turn.
+    The system will present the user with a form; once submitted, the tool runs automatically.
+    """
+    return {
+        "__tool_inputs_required__": True,
+        "tool_name": tool_name,
+        "prefilled_params": prefilled_params,
+        "explanation": explanation,
+    }
+
+
 def _apply_uploaded_bounds(model):
     """Apply any reaction bounds uploaded via CSV (model_manager.bounds_data) in place.
 
@@ -1614,7 +1658,7 @@ def find_essential_genes(threshold: float = None) -> dict:
 
     if len(rows) > 5:
         import pandas as _pd
-        out_dir = os.path.join(session_dir, "essentiality")
+        out_dir = os.path.join(session_dir or ".", "essentiality")
         os.makedirs(out_dir, exist_ok=True)
         csv_path = os.path.join(out_dir, "essential_genes.csv")
         _pd.DataFrame(rows).to_csv(csv_path, index=False)
@@ -1663,7 +1707,7 @@ def find_essential_reactions(threshold: float = None) -> dict:
 
     if len(rows) > 5:
         import pandas as _pd
-        out_dir = os.path.join(session_dir, "essentiality")
+        out_dir = os.path.join(session_dir or ".", "essentiality")
         os.makedirs(out_dir, exist_ok=True)
         csv_path = os.path.join(out_dir, "essential_reactions.csv")
         _pd.DataFrame(rows).to_csv(csv_path, index=False)
@@ -1772,7 +1816,7 @@ def check_mass_balance() -> dict:
 
     if len(rows) > 5:
         import pandas as _pd
-        out_dir = os.path.join(session_dir, "validation")
+        out_dir = os.path.join(session_dir or ".", "validation")
         os.makedirs(out_dir, exist_ok=True)
         csv_path = os.path.join(out_dir, "mass_imbalance.csv")
         _pd.DataFrame(
@@ -2132,9 +2176,9 @@ def run_moma(knockout_reactions=None, knockout_genes=None, linear: bool = True) 
             "method": "linear MOMA" if linear else "quadratic MOMA",
             "knocked_out_genes": [g.id for g in gene_objs],
             "knocked_out_reactions": [r.id for r in rxn_objs],
-            "wild_type_growth": round(float(wt_growth), 6),
-            "knockout_growth": round(float(ko_growth), 6),
-            "growth_ratio": round(float(ko_growth / wt_growth), 4) if wt_growth else None,
+            "wild_type_growth": _clip_zero(round(float(wt_growth), 6)),
+            "knockout_growth": _clip_zero(round(float(ko_growth), 6)),
+            "growth_ratio": round(float(_clip_zero(ko_growth) / wt_growth), 4) if wt_growth else None,
             "moma_distance": round(float(sol.objective_value), 6),
         }
         result.update(_flux_change_report(wt, sol, "moma"))
@@ -2148,7 +2192,7 @@ def run_moma(knockout_reactions=None, knockout_genes=None, linear: bool = True) 
 def run_room(
     knockout_reactions=None,
     knockout_genes=None,
-    linear: bool = False,
+    linear: bool = True,
     delta: float = 0.03,
     epsilon: float = 0.001,
 ) -> dict:
@@ -2206,9 +2250,9 @@ def run_room(
             "epsilon": epsilon,
             "knocked_out_genes": [g.id for g in gene_objs],
             "knocked_out_reactions": [r.id for r in rxn_objs],
-            "wild_type_growth": round(float(wt_growth), 6),
-            "knockout_growth": round(float(ko_growth), 6),
-            "growth_ratio": round(float(ko_growth / wt_growth), 4) if wt_growth else None,
+            "wild_type_growth": _clip_zero(round(float(wt_growth), 6)),
+            "knockout_growth": _clip_zero(round(float(ko_growth), 6)),
+            "growth_ratio": round(float(_clip_zero(ko_growth) / wt_growth), 4) if wt_growth else None,
         }
         result.update(_flux_change_report(wt, sol, "room"))
         if errors:
@@ -2282,7 +2326,7 @@ def find_blocked_rxns(
 
     if len(blocked_ids) > 5:
         import pandas as _pd
-        out_dir = os.path.join(session_dir, "blocked")
+        out_dir = os.path.join(session_dir or ".", "blocked")
         os.makedirs(out_dir, exist_ok=True)
         csv_path = os.path.join(out_dir, "blocked_reactions.csv")
         _pd.DataFrame({"reaction_id": blocked_ids}).to_csv(csv_path, index=False)
@@ -3034,8 +3078,8 @@ run_room._planner_meta = {
             "required": False,
         },
         "linear": {
-            "description": "Use the linear ROOM relaxation instead of the exact MILP. Default False.",
-            "default": False,
+            "description": "Use the linear ROOM relaxation instead of the exact MILP. Default True (faster); set to false to run exact MILP.",
+            "default": True,
             "required": False,
         },
         "delta": {
@@ -3453,6 +3497,21 @@ request_file_upload_tool = FunctionTool.from_defaults(
         "Provide param (the exact parameter name the file maps to), "
         "file_types (comma-separated accepted extensions, e.g. 'csv,tsv' or 'faa,fasta,fa,fna'), "
         "and description (one sentence explaining what the file must contain). "
+        "After calling this tool, stop immediately — do not call any other tool in the same turn."
+    ),
+    return_direct=return_direct,
+)
+
+request_tool_inputs_tool = FunctionTool.from_defaults(
+    fn=request_tool_inputs,
+    name="request_tool_inputs",
+    description=(
+        "Call this tool when you know which tool to run but the user has not provided all required "
+        "arguments and they cannot be safely inferred. "
+        "Provide tool_name (exact tool to call, e.g. 'add_reaction'), "
+        "prefilled_params (JSON string of args derivable from the user's message, e.g. "
+        "'{\"reaction_id\": \"GALK\"}', or '{}' if none), "
+        "and explanation (one sentence on what you understood from the user's request). "
         "After calling this tool, stop immediately — do not call any other tool in the same turn."
     ),
     return_direct=return_direct,

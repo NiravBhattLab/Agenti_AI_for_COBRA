@@ -108,6 +108,27 @@ Tools requiring files:
 """
 
 
+chat_tool_inputs_context = """
+Tool Inputs Protocol:
+When you determine that a specific tool should be called but the user has not provided all required
+arguments and the arguments cannot be safely inferred from the message:
+
+1. Do NOT call the target tool with fabricated, guessed, or placeholder values.
+2. Do NOT ask for the missing arguments in plain conversational text.
+3. Call `request_tool_inputs` with:
+   - tool_name: the exact name of the tool you intend to call (e.g. "add_reaction")
+   - prefilled_params: a JSON string of any argument values you CAN derive from the user's message
+     (e.g. '{"reaction_id": "GALK"}'), or '{}' if nothing is derivable
+   - explanation: one sentence describing what you understood from the user's request
+4. After calling `request_tool_inputs`, stop — do not call any other tool in the same turn.
+5. The system will present the user with a form; once submitted, the tool runs automatically.
+
+Common cases requiring this protocol:
+- add_reaction → requires: reaction_id, equation
+- load_model → requires: model_id (only if the user truly did not specify one)
+"""
+
+
 chat_credential_context = """
 Credential Protocol:
 The build_model_with_mackinac tool reconstructs a genome-scale model from a PATRIC genome via the ModelSEED web service. It requires the user's PATRIC account credentials (username and password) and live internet access.
