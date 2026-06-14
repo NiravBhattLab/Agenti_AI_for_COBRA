@@ -88,10 +88,12 @@ def model_data() -> dict:
             "error": str(e),
             "model_id": model_manager.current_model_id
         }
-def model_info(query: str, count=10) -> dict:
+def model_info(query: str, count=20) -> dict:
     """
-    Returns specific information for a given model based on a query.
+    Returns categorical data for a given model based on a query.
     """
+    _MAX_COUNT = 30
+    count = min(int(count), _MAX_COUNT)
     try:
         model = model_manager.get_current_model()
     except:
@@ -100,11 +102,17 @@ def model_info(query: str, count=10) -> dict:
         }
     try:
         if query == "reactions":
-            return {"reactions": [f"{rxn.id} ({rxn.name})" for rxn in model.reactions][:count]}
+            total = len(model.reactions)
+            items = [f"{rxn.id} ({rxn.name})" for rxn in model.reactions][:count]
+            return {"reactions": items, "shown": len(items), "total": total}
         elif query == "genes":
-            return {"genes": [f"{gn.id} ({gn.name})" for gn in model.genes][:count]}
+            total = len(model.genes)
+            items = [f"{gn.id} ({gn.name})" for gn in model.genes][:count]
+            return {"genes": items, "shown": len(items), "total": total}
         elif query == "metabolites":
-            return {"metabolites": [f"{mb.id} ({mb.name})" for mb in model.metabolites][:count]}
+            total = len(model.metabolites)
+            items = [f"{mb.id} ({mb.name})" for mb in model.metabolites][:count]
+            return {"metabolites": items, "shown": len(items), "total": total}
         else:
             return {
                 "error": f"Unknown query: {query}",
@@ -242,6 +250,8 @@ def run_fba() -> str:
         model = model_manager.get_current_model()
     except Exception as e:
         return {"error": str(e)}
+    if isinstance(model, dict):
+        return {"error": "No model is currently loaded. Please load a model first."}
 
     if not model.objective.expression:
         return {"error": "No objective function is set on the model."}
@@ -272,6 +282,8 @@ def run_pfba(fraction_of_optimum: float = 1.0) -> dict:
         model = model_manager.get_current_model()
     except Exception as e:
         return {"error": str(e)}
+    if isinstance(model, dict):
+        return {"error": "No model is currently loaded. Please load a model first."}
 
     if not model.objective.expression:
         return {"error": "No objective function is set on the model."}
@@ -310,6 +322,8 @@ def run_geometric_fba() -> dict:
         model = model_manager.get_current_model()
     except Exception as e:
         return {"error": str(e)}
+    if isinstance(model, dict):
+        return {"error": "No model is currently loaded. Please load a model first."}
 
     if not model.objective.expression:
         return {"error": "No objective function is set on the model."}
@@ -422,15 +436,38 @@ def gene_knockout_simulation(gene_names, type: str) -> dict:
         if isinstance(gene_names, str):
             gene_names = [g.strip() for g in gene_names.split(",") if g.strip()]
         model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+        _FUZZY_THRESHOLD = 0.8
         valid_genes = []
+        not_found = []
+        fuzzy_notes = []
         seen = set()
         for name in gene_names:
             tag, payload = _find_gene(model, name)
-            gene = payload if tag == "exact" else (payload[0] if payload else None)
-            if gene and gene.id not in seen:
+            if tag == "exact":
+                gene = payload
+            else:
+                best = payload[0] if payload else None
+                if best is None:
+                    not_found.append({"gene": name, "suggestions": []})
+                    continue
+                q = name.strip().lower()
+                score = max(_fuzzy_score(q, best.id.lower()), _fuzzy_score(q, best.name.lower()))
+                if score < _FUZZY_THRESHOLD:
+                    not_found.append({"gene": name, "suggestions": [g.id for g in payload]})
+                    continue
+                gene = best
+                fuzzy_notes.append(f"'{name}' was fuzzy-matched to '{best.id}' (similarity {score:.0%})")
+            if gene.id not in seen:
                 valid_genes.append(gene)
                 seen.add(gene.id)
 
+        if not_found:
+            return {
+                "error": f"Gene(s) not found (no match above 80% similarity): {[e['gene'] for e in not_found]}",
+                "suggestions": not_found,
+            }
         if not valid_genes:
             return {"error": "None of the provided genes are valid in this model."}
 
@@ -447,14 +484,19 @@ def gene_knockout_simulation(gene_names, type: str) -> dict:
             "status": "Solver Status"
         })
 
+        out: dict = {}
+        if fuzzy_notes:
+            out["fuzzy_matches"] = fuzzy_notes
         if len(result) > 5:
             file_path = os.path.join(session_dir, "knockouts", "gene_knockout_result.csv")
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             result.to_csv(file_path, index=False)
             subset = result.iloc[:5, :5]
-            return {"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."}
+            out.update({"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."})
+            return out
 
-        return result.to_dict(orient="records")
+        out["data"] = result.to_dict(orient="records")
+        return out
 
     except Exception as e:
         return {"error": str(e)}
@@ -466,15 +508,38 @@ def reaction_knockout_simulation(reaction_names, type: str) -> dict:
         if isinstance(reaction_names, str):
             reaction_names = [r.strip() for r in reaction_names.split(",") if r.strip()]
         model = model_manager.get_current_model()
+        if isinstance(model, dict):
+            return {"error": "No model is currently loaded. Please load a model first."}
+        _FUZZY_THRESHOLD = 0.8
         valid_rxns = []
+        not_found = []
+        fuzzy_notes = []
         seen = set()
         for name in reaction_names:
             tag, payload = _find_reaction(model, name)
-            rxn = payload if tag == "exact" else (payload[0] if payload else None)
-            if rxn and rxn.id not in seen:
+            if tag == "exact":
+                rxn = payload
+            else:
+                best = payload[0] if payload else None
+                if best is None:
+                    not_found.append({"reaction": name, "suggestions": []})
+                    continue
+                q = name.strip().lower()
+                score = max(_fuzzy_score(q, best.id.lower()), _fuzzy_score(q, best.name.lower()))
+                if score < _FUZZY_THRESHOLD:
+                    not_found.append({"reaction": name, "suggestions": [r.id for r in payload]})
+                    continue
+                rxn = best
+                fuzzy_notes.append(f"'{name}' was fuzzy-matched to '{best.id}' (similarity {score:.0%})")
+            if rxn.id not in seen:
                 valid_rxns.append(rxn)
                 seen.add(rxn.id)
 
+        if not_found:
+            return {
+                "error": f"Reaction(s) not found (no match above 80% similarity): {[e['reaction'] for e in not_found]}",
+                "suggestions": not_found,
+            }
         if not valid_rxns:
             return {"error": "None of the provided reactions are valid in this model."}
 
@@ -491,18 +556,23 @@ def reaction_knockout_simulation(reaction_names, type: str) -> dict:
             "status": "Solver Status"
         })
 
+        out: dict = {}
+        if fuzzy_notes:
+            out["fuzzy_matches"] = fuzzy_notes
         if len(result) > 5:
             file_path = os.path.join(session_dir, "knockouts", "reaction_knockout_result.csv")
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             result.to_csv(file_path, index=False)
             subset = result.iloc[:5, :5]
-            return {"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."}
+            out.update({"file": file_path, "data": subset.to_dict(orient="records"), "note": "Too many results to display. Download CSV."})
+            return out
 
-        return result.to_dict(orient="records")
+        out["data"] = result.to_dict(orient="records")
+        return out
 
     except Exception as e:
         return {"error": str(e)}
-        
+
 def recommend_sampling_config(model):
     n_rxns = len(model.reactions)
     cpu_cores = multiprocessing.cpu_count()
@@ -538,30 +608,38 @@ def sample_metabolic_model(reaction_count=1000):
     """
     Samples a metabolic model given the number of samples.
     """
-    model = model_manager.get_current_model()
-    # error handling
-    config = recommend_sampling_config(model)
-    config["method"] = model_manager.sampler
-    
-    if config["method"] == "achr":
-        sampler = ACHRSampler(model, thinning=config["thinning"])
-    else:
-        sampler = OptGPSampler(model, thinning=config["thinning"], processes=config["processes"])
-    samples = sampler.sample(reaction_count)
-    subset = samples.iloc[:5, :5]
-    sampling_dir = os.path.join(session_dir, 'flux_sampling')
-    os.makedirs(sampling_dir, exist_ok=True)
-    csv_path = os.path.join(sampling_dir, 'flux_sampling_result.csv')
-    samples.to_csv(csv_path, index=False)
-    return {
-        "status": "success",
-        "n_samples": reaction_count,
-        "method": config["method"],
-        "thinning": config["thinning"],
-        "processes": config["processes"],
-        "save_path": csv_path,
-        "samples": subset.to_dict(orient="records")
-    }
+    try:
+        model = model_manager.get_current_model()
+    except Exception as e:
+        return {"error": str(e)}
+    if isinstance(model, dict):
+        return {"error": "No model is currently loaded. Please load a model first."}
+
+    try:
+        config = recommend_sampling_config(model)
+        config["method"] = model_manager.sampler
+
+        if config["method"] == "achr":
+            sampler = ACHRSampler(model, thinning=config["thinning"])
+        else:
+            sampler = OptGPSampler(model, thinning=config["thinning"], processes=config["processes"])
+        samples = sampler.sample(reaction_count)
+        subset = samples.iloc[:5, :5]
+        sampling_dir = os.path.join(session_dir, 'flux_sampling')
+        os.makedirs(sampling_dir, exist_ok=True)
+        csv_path = os.path.join(sampling_dir, 'flux_sampling_result.csv')
+        samples.to_csv(csv_path, index=False)
+        return {
+            "status": "success",
+            "n_samples": reaction_count,
+            "method": config["method"],
+            "thinning": config["thinning"],
+            "processes": config["processes"],
+            "save_path": csv_path,
+            "samples": subset.to_dict(orient="records")
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def list_escher_maps() -> dict:
@@ -795,6 +873,8 @@ def add_reaction(
         model = model_manager.get_current_model()
     except Exception as e:
         return {"error": str(e)}
+    if isinstance(model, dict):
+        return {"error": "No model is currently loaded. Please load a model first."}
 
     if not _re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', reaction_id):
         return {"error": f"reaction_id '{reaction_id}' is not a valid SBML SId. Use letters/digits/underscores; must start with letter or _."}
@@ -956,6 +1036,8 @@ def set_reaction_bounds(
         model = model_manager.get_current_model()
     except Exception as e:
         return {"error": str(e)}
+    if isinstance(model, dict):
+        return {"error": "No model is currently loaded. Please load a model first."}
 
     # ── CSV batch mode ──────────────────────────────────────────────────────────
     if csv_path is not None:
@@ -1870,6 +1952,9 @@ def build_model_with_mackinac(
     except ImportError:
         return {"error": "The 'mackinac' package is not installed. Run: pip install mackinac"}
 
+    # Point mackinac at the current ModelSEED endpoint.
+    mackinac.modelseed.ms_client.url = "https://modelseed.org/api/model"
+
     # 1. Authenticate to the PATRIC/ModelSEED web service.
     try:
         mackinac.get_token(username, password)
@@ -2030,12 +2115,12 @@ def run_moma(knockout_reactions=None, knockout_genes=None, linear: bool = True) 
         obj_coeffs = _objective_reaction_coeffs(model)
         wt_growth = sum(c * wt.fluxes[r.id] for r, c in obj_coeffs.items())
 
-        with model:
-            for g in gene_objs:
-                g.knock_out()
-            for r in rxn_objs:
-                r.knock_out()
-            sol = _moma(model, solution=wt, linear=linear)
+        ko_model = model.copy()
+        for g in gene_objs:
+            ko_model.genes.get_by_id(g.id).knock_out()
+        for r in rxn_objs:
+            ko_model.reactions.get_by_id(r.id).knock_out()
+        sol = _moma(ko_model, solution=wt, linear=linear)
 
         if sol.status != "optimal":
             return {"error": f"MOMA did not reach an optimal solution (status: {sol.status})."}
@@ -2102,12 +2187,12 @@ def run_room(
         obj_coeffs = _objective_reaction_coeffs(model)
         wt_growth = sum(c * wt.fluxes[r.id] for r, c in obj_coeffs.items())
 
-        with model:
-            for g in gene_objs:
-                g.knock_out()
-            for r in rxn_objs:
-                r.knock_out()
-            sol = _room(model, solution=wt, linear=linear, delta=delta, epsilon=epsilon)
+        ko_model = model.copy()
+        for g in gene_objs:
+            ko_model.genes.get_by_id(g.id).knock_out()
+        for r in rxn_objs:
+            ko_model.reactions.get_by_id(r.id).knock_out()
+        sol = _room(ko_model, solution=wt, linear=linear, delta=delta, epsilon=epsilon)
 
         if sol.status != "optimal":
             return {"error": f"ROOM did not reach an optimal solution (status: {sol.status})."}
@@ -2228,18 +2313,35 @@ def remove_genes(gene_names, remove_reactions: bool = True) -> dict:
     if isinstance(gene_names, str):
         gene_names = [g.strip() for g in gene_names.split(",") if g.strip()]
 
-    valid_genes, unresolved, seen = [], [], set()
+    _FUZZY_THRESHOLD = 0.8
+    valid_genes, not_found, fuzzy_notes, seen = [], [], [], set()
     for name in gene_names:
         tag, payload = _find_gene(model, name)
-        g = payload if tag == "exact" else (payload[0] if payload else None)
-        if g is None:
-            unresolved.append(name)
-        elif g.id not in seen:
-            valid_genes.append(g)
-            seen.add(g.id)
+        if tag == "exact":
+            gene = payload
+        else:
+            best = payload[0] if payload else None
+            if best is None:
+                not_found.append({"gene": name, "suggestions": []})
+                continue
+            q = name.strip().lower()
+            score = max(_fuzzy_score(q, best.id.lower()), _fuzzy_score(q, best.name.lower()))
+            if score < _FUZZY_THRESHOLD:
+                not_found.append({"gene": name, "suggestions": [g.id for g in payload]})
+                continue
+            gene = best
+            fuzzy_notes.append(f"'{name}' was fuzzy-matched to '{best.id}' (similarity {score:.0%})")
+        if gene.id not in seen:
+            valid_genes.append(gene)
+            seen.add(gene.id)
 
+    if not_found:
+        return {
+            "error": f"Gene(s) not found (no match above 80% similarity): {[e['gene'] for e in not_found]}",
+            "suggestions": not_found,
+        }
     if not valid_genes:
-        return {"error": "None of the provided genes are valid in this model.", "unresolved": unresolved}
+        return {"error": "None of the provided genes are valid in this model."}
 
     genes_before = len(model.genes)
     reactions_before = len(model.reactions)
@@ -2265,8 +2367,8 @@ def remove_genes(gene_names, remove_reactions: bool = True) -> dict:
         "remove_reactions": remove_reactions,
         "note": "Genes were permanently removed from the loaded model and GPRs were simplified.",
     }
-    if unresolved:
-        result["unresolved_genes"] = unresolved
+    if fuzzy_notes:
+        result["fuzzy_matches"] = fuzzy_notes
     return result
 
 
@@ -2520,7 +2622,7 @@ run_fva._planner_meta = {
 
 gene_knockout_simulation._planner_meta = {
     "name": "gene_knockout_simulation",
-    "description": "Simulate the deletion of one or more genes by constraining their associated reactions to zero flux (following GPR rules) and report the resulting change in growth rate — identifies lethal and growth-reducing gene targets.",
+    "description": "Simulate the deletion of one or more genes by constraining their associated reactions to zero flux (following GPR rules) — internally runs FBA and directly returns the post-knockout growth rate alongside the wild-type growth rate. No separate FBA step is needed after calling this tool; the growth result is already included in the output.",
     "params": {
         "gene_names": {
             "description": "List of gene names to knock out (e.g. ['b0001', 'b0002'])",
@@ -2537,7 +2639,7 @@ gene_knockout_simulation._planner_meta = {
 
 reaction_knockout_simulation._planner_meta = {
     "name": "reaction_knockout_simulation",
-    "description": "Simulate the removal of one or more reactions from the network and report the resulting change in growth rate — identifies reaction essentiality and growth-coupled deletions.",
+    "description": "Simulate the removal of one or more reactions from the network — internally runs FBA and directly returns the post-knockout growth rate alongside the wild-type growth rate. No separate FBA step is needed after calling this tool; the growth result is already included in the output.",
     "params": {
         "reaction_names": {
             "description": "List of reaction names to knock out",
@@ -3086,9 +3188,13 @@ model_data_tool = FunctionTool.from_defaults(
 model_info_tool = FunctionTool.from_defaults(
     fn=model_info,
     name="model_info",
-    description="""Returns categorical data for a given model based on a query.
-    Queries can be 'reactions', 'genes', or 'metabolites'.
-    You can also specify the number of items to return with the 'count' parameter.""",
+    description=(
+        "Returns a sample list of reactions/genes/metabolites in the model. "
+        "query must be 'reactions', 'genes', or 'metabolites'. "
+        "Always returns at most 30 items — do NOT use this to find a specific reaction, gene, or "
+        "metabolite; use reaction_info / gene_info / metabolite_info for that instead. "
+        "Use this only to give the user a general sense of what is in the model."
+    ),
     return_direct=return_direct
 )
 reaction_info_tool = FunctionTool.from_defaults(

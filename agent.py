@@ -9,6 +9,8 @@ from tools import (
     find_essential_genes_tool, find_essential_reactions_tool, check_model_consistency_tool,
     check_mass_balance_tool, prune_unused_reactions_tool, prune_unused_metabolites_tool,
     find_minimal_medium_tool, build_model_with_mackinac_tool,
+    run_moma_tool, run_room_tool, find_blocked_rxns_tool, remove_genes_tool,
+    gapfill_tool, gapfill_model_with_carveme_tool,
 )
 from tools import request_file_upload_tool
 from llama_index.core.llms import ChatMessage
@@ -41,6 +43,12 @@ all_tools = [
     prune_unused_metabolites_tool,
     find_minimal_medium_tool,
     build_model_with_mackinac_tool,
+    run_moma_tool,
+    run_room_tool,
+    find_blocked_rxns_tool,
+    remove_genes_tool,
+    gapfill_tool,
+    gapfill_model_with_carveme_tool,
     request_file_upload_tool,
 ]
 

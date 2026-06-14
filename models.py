@@ -105,7 +105,9 @@ class ModelManager:
 
     def validate_model(self, file_path):
         _, errors = validate_sbml_model(file_path)
-        for key in ("SBML_FATAL", "COBRA_FATAL", "SBML_ERROR", "SBML_SCHEMA_ERROR", "COBRA_ERROR"):
+        # Only block on truly fatal errors. SBML_ERROR includes non-fatal
+        # structural warnings (e.g. empty reactions) that COBRApy can still load.
+        for key in ("SBML_FATAL", "COBRA_FATAL"):
             if errors.get(key):
                 return False
         return True
