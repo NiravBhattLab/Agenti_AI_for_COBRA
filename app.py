@@ -533,11 +533,8 @@ def plan_mode_ui():
                     st.caption(f"*{step['rationale']}*")
 
             with col_tool:
-                st.markdown("**Tool & Source**")
+                st.markdown("**Tool**")
                 st.code(step["tool"], language=None)
-                st.caption(
-                    f"Source: {step.get('source_paper','—')} / {step.get('source_step_id','—')}"
-                )
                 if step.get("user_inputs"):
                     st.markdown("**Inputs**")
                     _params = list(step["user_inputs"].items())
