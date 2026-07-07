@@ -1,95 +1,76 @@
-# 🧬 Metabolic Simulator
+# MetaPilot
 
-A simple AI-powered web application that allows biological researchers to upload, explore, and simulate metabolic models using natural language queries.
+An AI-enabled web application that lets domain-focused researchers — including experimental biologists with no systems-biology programming background — design and run genome-scale metabolic (GSM) modelling workflows using natural language.
 
-## 🚀 Project Goal
+***This repository is under active development. Please pull periodically.***
 
-This project provides an intuitive interface for interacting with SBML-based metabolic models. It combines AI tools and metabolic simulation to help researchers run analyses like Flux Balance Analysis (FBA), view model statistics, and modify objectives — all through simple text-based interaction.
+## Parts of MetaPilot
 
-***This repository is currently under development! So please periodically pull this repository.***
+- **MetaInteract** — a free-form, ReAct-style agentic chat interface. You describe what you want in plain English and the agent decides which COBRApy tools to call, in what order, to answer you.
+- **MetaPlan** — a plan-and-execute interface. Give it a high-level research objective and it retrieves relevant published methodology, drafts a structured multi-step analysis plan, lets you review/edit/approve it, then executes and interprets each step.
+- **Shared backend** — a single FastAPI service holds the active model (`ModelManager`), the LLM instance, and the full COBRApy tool suite, so both modes operate on the same live model and session state.
+- **Procedural Knowledge Base (PKB)** — a vector database of workflow steps extracted from thousands of published GSM papers, which grounds MetaPlan's plan generation in real methodology rather than free invention.
 
-## ✨ Features
+## Project Goal
 
-- 🔬 Load SBML models from BiGG, BioModels, or upload your own
-- 📊 Get quick statistics from the loaded model
-- 🤖 ReAct-style LLM agent for tool-calling and reasoning
-- 🧪 Run biological simulations:
-  - Set Objective Functions (with Directions)
-  - Flux Balance Analysis (FBA)
-  - Gene/Reaction Knockouts (single/double)
-  - Flux Variability Analysis (FVA)
+GSM modelling is a powerful framework for analyzing cellular metabolism, but it demands programming proficiency and fluency with a fragmented, fast-moving software ecosystem — putting it out of reach for most domain-focused biologists. MetaPilot removes that barrier by offering unified, natural-language-driven access to the full GSM modelling lifecycle — reconstruction, curation, constraint definition, simulation, perturbation analysis, and visualization — without writing a single line of code.
+
+## Features
+
+- Load SBML models from BiGG, BioModels, or upload your own
+- Reconstruct new models with **CarveMe**, build context-specific models with **CORDA**, or use **Mackinac**/ModelSEED
+- Curate and QC models: MEMOTE quality reports, consistency and mass-balance checks, gap-filling, pruning unused reactions/metabolites, blocked-reaction detection
+- Configure models: set objectives (with direction), edit reaction bounds, add reactions, remove genes, find minimal medium
+- Run simulations:
+  - Flux Balance Analysis (FBA), parsimonious FBA, geometric FBA
+  - Flux Variability Analysis (FVA), production envelopes
   - Flux Sampling
-- 📊 Export results as CSV for large queries
-- 💬 Supports natural language querying for:
-  - Reactions, metabolites, gene info
-  - Simulation goals and interpretation
-- 🔌 Multi-backend LLM support:
-  - Local: **Ollama**
-  - Remote: **OpenAI**, **Groq**, **HuggingFace**
-  - **Note:** Use OpenAI/ Groq for Best Results [Click Here](#-miscellaneous)
+  - Gene/reaction knockouts (single/double), essential gene/reaction finding, MOMA, ROOM
+- Visualize fluxes on Escher maps
+- Export results as CSV for large queries
+- Named sessions with persistent artifacts (FVA tables, knockout summaries, sampling matrices) that can be saved or discarded on exit
+- Supports natural language querying for reactions, metabolites, gene info, and simulation results
+- Multi-backend LLM support, switchable at runtime without restarting: **Groq**, **OpenAI**, **Gemini**, **Ollama** (local), **Hugging Face Inference**, and **llama.cpp** (local GGUF models)
+  - **Note:** Use Groq/OpenAI/Gemini for best results
 
-## 🚀 Getting Started
+## Getting Started
 
 1. Installation
 
 ```bash
-# Clone repository
-$ git clone https://github.com/NiravBhattLab/Agenti_AI_for_COBRA.git
+# Clone repository (MetaPilot branch)
+$ git clone https://github.com/NiravBhattLab/Agenti_AI_for_COBRA.git -b MetaPilot
 $ cd Agenti_AI_for_COBRA
 
-# Create virtual environment
-$ python -m venv venv && ./venv/bin/activate.ps1
-
-# Install dependencies
+# Option A: virtual environment
+$ python -m venv venv && ./venv/Scripts/activate
 $ pip install -r requirements.txt
+
+# Option B: conda environment (recommended — pulls in non-pip deps like
+# prodigal/glpk needed by the CarveMe/CORDA reconstruction tools)
+$ conda env create -f environment.yml
+$ conda activate agentic_cobra
 ```
-2. **Get API KEY or use Ollama**: Supported services include OpenAI, Groq, HuggingFace or use Ollama.
-3. **Start the FastAPI Backend**: `uvicorn main:app --reload`
-   > On first run, the procedural knowledge base (~337 MB) will be automatically downloaded from [Hugging Face Hub](https://huggingface.co/datasets/sistasaathvik/gsm_procedural_knowledge_base) and saved locally. This is a one-time download.
-4. **Start the Streamlit Frontened**: `streamlit run app.py`
 
+2. **Get an API key or use a local provider**: supported services are Groq, OpenAI, Gemini, Hugging Face, or a local model via Ollama/llama.cpp.
+3. **Start the FastAPI backend**: `uvicorn main:app --reload`
+   > On first run, the Procedural Knowledge Base is automatically downloaded from the [Hugging Face Hub dataset `sistasaathvik/gsm_procedural_knowledge_base`](https://huggingface.co/datasets/sistasaathvik/gsm_procedural_knowledge_base) into a local ChromaDB directory. This is a one-time download that MetaPlan's retriever queries for every planning request.
+4. **Start the Streamlit frontend**: `streamlit run app.py`
+5. Name a session, load or upload a model, then either chat freely (MetaInteract) or toggle **Plan Mode** to draft a multi-step plan (MetaPlan).
 
-## 🧪 Example Usage
+### Example Queries
 
-### Natural Language:
 - "What is the metadata of the loaded model?"
-- "What are first ten reactions in the model?"
+- "What are the first ten reactions in the model?"
 - "Run Flux Balance Analysis on the model."
+- "Build a context-specific model for a breast cancer cell line using CORDA."
 
-For more sample queries refer to ```Testing/demo_prompts.txt```
+## Future Work
 
-## 📦 MISCELLANEOUS
-
-Install dependencies with:
-
-```bash
-pip install -r requirements.txt
-```
-
-**Install Ollama (if preferred):**
-
-- Server: [Download Server](https://ollama.com/download)
-- Models: [Browse Models](https://ollama.com/search)
-
-**Get API Keys:**
-
-- Groq: [Get Groq Key](https://console.groq.com/keys)
-- OpenAI: [Get OpenAI Key](https://platform.openai.com/api-keys)
-- HuggingFace: [Get HF Token](https://huggingface.co/settings/tokens) (Required for Gated Repositories)
-
-## 🧹 Future Work
-
-* 🌍 UI for exploring and downloading simulation outputs
-* 🔬 Inference over multi-model libraries (VMH, ModelSEED)
-* 🧠 Smart model suggestion based on query intent
-* 📊 Model visualization (SBML layout rendering)
-
-## 👨‍🔬 Ideal For
-
-- Biological researchers
-- Systems biology students
-- Anyone exploring SBML-based metabolic models
+- Expand the tool suite: MATLAB COBRA Toolbox-only methods (strain design, transcriptomic integration, thermodynamic FBA), plus live literature search (PubMed/Semantic Scholar) to ground answers beyond the static PKB
+- Fine-tune the retrieval embedding model and the agent LLMs on GSM-specific literature to improve retrieval quality and plan/tool-call accuracy
+- Move beyond the current ReAct architecture toward planning frameworks with stronger long-horizon reasoning, better error recovery, and less reliance on manual parameter input
 
 ---
 
-Built with ❤️ for enabling scientific discovery with AI by [Aadhitya Sriram](https://github.com/aadhitya-sriram) and [Pavan Kumar](https://github.com/pavan-kumar-s).
+Built for enabling scientific discovery with AI, by [Saathvik Sista](https://github.com/saathviksista), [Aadhitya Sriram](https://github.com/aadhitya-sriram) and [Pavan Kumar](https://github.com/pavan-kumar-s).
