@@ -1,16 +1,14 @@
 # MetaPilot
 
-An AI-enabled web application that lets domain-focused researchers — including experimental biologists with no systems-biology programming background — design and run genome-scale metabolic (GSM) modelling workflows using natural language.
+An AI-enabled web application that lets domain-focused researchers - including experimental biologists with no systems-biology programming background - design and run genome-scale metabolic (GSM) modelling workflows using natural language.
 
 ***This repository is under active development. Please pull periodically.***
 Note: The code for the analysis and Procedural Knowledge Base(PKB) generation can be found at [this GitHub repository](https://github.com/saathviksista/MetaPilot-analysis-data-generation))
 
-## Parts of MetaPilot
+## MetaPilot has two parts to it
 
 - **MetaInteract** — a free-form, ReAct-style agentic chat interface. You describe what you want in plain English and the agent decides which COBRApy tools to call, in what order, to answer you.
 - **MetaPlan** — a plan-and-execute interface. Give it a high-level research objective and it retrieves relevant published methodology, drafts a structured multi-step analysis plan, lets you review/edit/approve it, then executes and interprets each step.
-- **Shared backend** — a single FastAPI service holds the active model (`ModelManager`), the LLM instance, and the full COBRApy tool suite, so both modes operate on the same live model and session state.
-- **Procedural Knowledge Base (PKB)** — a vector database of workflow steps extracted from thousands of published GSM papers, which grounds MetaPlan's plan generation in real methodology rather than free invention.
 
 ## Project Goal
 
@@ -32,7 +30,6 @@ GSM modelling is a powerful framework for analyzing cellular metabolism, but it 
 - Named sessions with persistent artifacts (FVA tables, knockout summaries, sampling matrices) that can be saved or discarded on exit
 - Supports natural language querying for reactions, metabolites, gene info, and simulation results
 - Multi-backend LLM support, switchable at runtime without restarting: **Groq**, **OpenAI**, **Gemini**, **Ollama** (local), **Hugging Face Inference**, and **llama.cpp** (local GGUF models)
-  - **Note:** Use Groq/OpenAI/Gemini for best results
 
 ## Getting Started
 
@@ -61,10 +58,10 @@ $ conda activate agentic_cobra
 
 ### Example Queries
 
-- "What is the metadata of the loaded model?"
+- "Does mycobacterium tuberculosis have a pki gene?"
 - "What are the first ten reactions in the model?"
-- "Run Flux Balance Analysis on the model."
-- "Build a context-specific model for a breast cancer cell line using CORDA."
+- "Build a draft model for naegleria fowleri"
+- "Build a breast cancer cell line's model"
 
 ## Future Work
 
