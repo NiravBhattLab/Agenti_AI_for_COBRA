@@ -3,6 +3,7 @@
 An AI-enabled web application that lets domain-focused researchers — including experimental biologists with no systems-biology programming background — design and run genome-scale metabolic (GSM) modelling workflows using natural language.
 
 ***This repository is under active development. Please pull periodically.***
+Note: The code for the analysis and Procedural Knowledge Base(PKB) generation can be found at [this GitHub repository](https://github.com/saathviksista/MetaPilot-analysis-data-generation))
 
 ## Parts of MetaPilot
 
