@@ -31,6 +31,10 @@ GSM modelling is a powerful framework for analyzing cellular metabolism, but it 
 - Supports natural language querying for reactions, metabolites, gene info, and simulation results
 - Multi-backend LLM support, switchable at runtime without restarting: **Groq**, **OpenAI**, **Gemini**, **Ollama** (local), **Hugging Face Inference**, and **llama.cpp** (local GGUF models)
 
+## Documentation
+
+See [Documentation/](Documentation/) for a breakdown of what each script in this codebase does.
+
 ## Getting Started
 
 1. Installation
@@ -40,14 +44,24 @@ GSM modelling is a powerful framework for analyzing cellular metabolism, but it 
 $ git clone https://github.com/NiravBhattLab/Agenti_AI_for_COBRA.git -b MetaPilot
 $ cd Agenti_AI_for_COBRA
 
-# Option A: virtual environment
+
+
+# Option A: conda environment (recommended — pulls in non-pip deps like
+# prodigal/glpk needed by the CarveMe/CORDA reconstruction tools)
+
+# Linux/macOS:
+$ conda env create -f environment-linux.yml
+$ conda activate agentic_cobra
+
+# Windows (this script uses
+# the official Windows binaries into the environment automatically):
+$ powershell -ExecutionPolicy Bypass -File setup_windows.ps1
+$ conda activate agentic_cobra
+
+
+# Option B: virtual environment
 $ python -m venv venv && ./venv/Scripts/activate
 $ pip install -r requirements.txt
-
-# Option B: conda environment (recommended — pulls in non-pip deps like
-# prodigal/glpk needed by the CarveMe/CORDA reconstruction tools)
-$ conda env create -f environment.yml
-$ conda activate agentic_cobra
 ```
 
 2. **Get an API key or use a local provider**: supported services are Groq, OpenAI, Gemini, Hugging Face, or a local model via Ollama/llama.cpp.

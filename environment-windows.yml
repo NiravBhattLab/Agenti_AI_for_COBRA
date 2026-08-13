@@ -1,0 +1,48 @@
+# Windows environment: bioconda does not ship win-64 builds for `prodigal`
+# (needed by mackinac/carveme) or `diamond` (needed by carveme). Both tools
+# do provide official precompiled Windows binaries upstream, just not via
+# conda. Run setup_windows.ps1 instead of `conda env create` directly — it
+# creates this environment and then downloads/places prodigal.exe and
+# diamond.exe on the environment's PATH automatically.
+name: agentic_cobra
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - glpk
+  - pip:
+    # llama-cpp-python has no PyPI wheel for win-amd64/cp311 on recent
+    # versions, so pip falls back to compiling from source (needs MSVC).
+    # Pull a prebuilt CPU wheel instead and pin to a version that has one.
+    - --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+    - llama-cpp-python==0.3.19
+    - tqdm
+    - huggingface_hub
+    - torch
+    - cobra
+    - fastapi
+    - uvicorn
+    - pydantic
+    - requests
+    - streamlit
+    - accelerate
+    - transformers
+    - ollama
+    - python-libsbml
+    - python-multipart
+    - llama-index-core==0.14.22
+    - llama-index-llms-groq
+    - llama-index-llms-huggingface
+    - llama-index-llms-ollama
+    - llama-index-llms-google-genai
+    - llama-index-llms-llama-cpp
+    - chromadb>=0.5.0
+    - sentence-transformers>=3.0.0
+    - mackinac
+    - memote
+    - escher
+    - carveme
+    - corda
