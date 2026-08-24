@@ -16,6 +16,7 @@ GSM modelling is a powerful framework for analyzing cellular metabolism, but it 
 
 ## Features
 
+*Please refer to [this link](https://github.com/NiravBhattLab/Agenti_AI_for_COBRA/blob/MetaPilot/Documentation/MetaPilot_Technical_Report.pdf) for the full technical report and [this link](https://github.com/NiravBhattLab/Agenti_AI_for_COBRA/blob/MetaPilot/Documentation/MetaPilot_Case_Study_Companion.pdf) for the companion with case studies.*
 - Load SBML models from BiGG, BioModels, or upload your own
 - Reconstruct new models with **CarveMe**, build context-specific models with **CORDA**, or use **Mackinac**/ModelSEED
 - Curate and QC models: MEMOTE quality reports, consistency and mass-balance checks, gap-filling, pruning unused reactions/metabolites, blocked-reaction detection
